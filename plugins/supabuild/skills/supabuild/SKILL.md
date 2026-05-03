@@ -189,6 +189,30 @@ Preflight:
    (`git show-ref --verify --quiet refs/heads/$TARGET_BRANCH ||
    git ls-remote --exit-code --heads origin "$TARGET_BRANCH"`). If neither,
    ask the user whether to create it from `$BASE_BRANCH` or abort.
+5. **`gh` setup walkthrough (push-only).** If `$TARGET_BRANCH` is set,
+   the build will end in a `gh pr create` — gate on `gh` install + auth
+   **before** starting a multi-round build, so the user isn't told to
+   `gh auth login` after 20 minutes of work. If `$TARGET_BRANCH` is
+   empty, skip this step (the build stays local; `gh` is irrelevant).
+
+   Run the same detection + walkthrough as §C.1 step 1 parts d–h,
+   scoped to `gh-install` and `gh-auth` only:
+   ```bash
+   GH_GAPS=()
+   if command -v gh >/dev/null 2>&1; then
+     gh auth status >/dev/null 2>&1 || GH_GAPS+=("gh-auth")
+   else
+     GH_GAPS+=("gh-install")
+   fi
+   ```
+   If `GH_GAPS` is empty, continue. Otherwise:
+   - Auto-install when possible (`brew install gh` on macOS with
+     Homebrew; otherwise print the install snippet from
+     `https://cli.github.com/manual/installation` and stop).
+   - For `gh-auth`, print: "Run `gh auth login` in your terminal
+     (pick GitHub.com → HTTPS → authenticate via browser), then
+     re-run `/supabuild build`." Stop the skill — never assume
+     browser auth completed.
 
 Create:
 ```
@@ -1549,21 +1573,84 @@ hatch) if a needed field is not exposed by a structured subcommand.
 
 ### C.1. Preflight
 
-1. **`linear` CLI available.** `command -v linear` must succeed.
-   - On failure, stop and tell the user to install it:
-     `npm i -g @schpet/linear-cli` (or `brew install schpet/tap/linear-cli`).
-2. **Linear auth.** `linear auth token` must print a token.
-   - On failure, tell the user to run `linear auth login` and pick a
-     workspace, then re-run the skill.
-3. **Repo state.** `git status --porcelain` must be empty, or surfaced
-   and confirmed by the user.
-4. **`gh` available.** `gh auth status` must succeed — the §A flow
-   needs it for PR creation.
-5. **§A reachable.** This skill invokes the build flow inline
+On first run on a fresh machine, the `linear` CLI, the `gh` CLI, and
+either tool's auth state may all be missing. **Detect every gap in
+one pass before bailing** — printing one fix at a time turns a
+single fresh-machine setup into four round-trips and makes the user
+feel nagged. Auto-resolve the steps that don't require browser
+interaction; surface a consolidated walkthrough for the rest.
+
+1. **Setup walkthrough (CLIs + auth).**
+
+   **a. Detect all gaps in one pass.** Do not abort yet — collect
+   into a list. Skip the auth check when the matching install check
+   already failed (the auth command would fail for an unrelated
+   reason and pollute the report):
+   ```bash
+   GAPS=()
+   if command -v linear >/dev/null 2>&1; then
+     linear auth token >/dev/null 2>&1 || GAPS+=("linear-auth")
+   else
+     GAPS+=("linear-install")
+   fi
+   if command -v gh >/dev/null 2>&1; then
+     gh auth status >/dev/null 2>&1 || GAPS+=("gh-auth")
+   else
+     GAPS+=("gh-install")
+   fi
+   ```
+
+   **b. If `GAPS` is empty,** continue to step 2.
+
+   **c. Otherwise, print one consolidated header** — "First-time
+   setup for `/supabuild linear` on this machine" — then list every
+   gap so the user sees the full setup at once. Auto-run the install
+   gaps; the auth gaps must be done by the user in their own
+   terminal because both tools' login flows open a browser and the
+   skill cannot complete OAuth on the user's behalf.
+
+   **d. `linear-install`** — auto-run, in this order until one
+   succeeds:
+   - `command -v brew` ⇒ `brew install schpet/tap/linear-cli`
+   - else `command -v npm` ⇒ `npm i -g @schpet/linear-cli`
+   - else stop with: "install Node.js (or Homebrew on macOS) so the
+     skill can install `@schpet/linear-cli`, then re-run."
+   Re-check `command -v linear` after install; if still missing,
+   surface the install command's stderr and stop.
+
+   **e. `gh-install`** — auto-run when possible:
+   - macOS with `brew` ⇒ `brew install gh`
+   - Debian/Ubuntu (apt available) ⇒ print the official install
+     snippet from `https://cli.github.com/manual/installation` and
+     stop (the keyring + apt-source dance is fragile to auto-run
+     non-interactively).
+   - Otherwise ⇒ print "install `gh` from https://cli.github.com"
+     and stop.
+   Re-check `command -v gh` after install.
+
+   **f. `linear-auth`** — cannot be auto-resolved. Print:
+   > Run `linear auth login` in your terminal, pick the workspace,
+   > then re-run `/supabuild linear`.
+   And stop the skill (do not proceed to §C.2).
+
+   **g. `gh-auth`** — same:
+   > Run `gh auth login` in your terminal (pick GitHub.com → HTTPS →
+   > authenticate via browser), then re-run `/supabuild linear`.
+   And stop.
+
+   **h. After auto-installs, re-detect.** If any `*-auth` gap
+   remains, print all remaining auth instructions together (so the
+   user runs both `linear auth login` and `gh auth login` in one
+   sitting before re-invoking) and stop. Never assume browser auth
+   completed — always require a re-invocation.
+
+2. **Repo state.** `git status --porcelain` must be empty, or
+   surfaced and confirmed by the user.
+3. **§A reachable.** This skill invokes the build flow inline
    (this skill owns the build flow, so it just runs its own §A);
    confirm that the §A section is loaded in this skill before
    proceeding.
-6. **Capture run-level state once** (so per-ticket loops don't
+4. **Capture run-level state once** (so per-ticket loops don't
    re-derive identical values, and parallel jobs share a single
    resolved value rather than racing). Set:
    ```bash
