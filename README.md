@@ -52,6 +52,12 @@ The answer to "the ticket has a description, screenshots, and a stakeholder watc
 Same idea, over a GitHub Projects v2 board. On first run in a repo, creates a `Build Queue` project with a Status field and the labels supabuild uses, then drains every issue in `Todo`. State moves and verdicts are posted as issue comments.
 
 ```
+/supabuild github fix the invoice rounding bug on the billing page
+```
+
+Creates a GitHub issue, drops it in `Todo`, then includes it in the run.
+
+```
 /supabuild worktree experiment with a different rate limiter
 ```
 The answer to "I just want an isolated branch for one-off work". Spins up a worktree, no agents.
