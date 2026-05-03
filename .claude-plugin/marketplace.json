@@ -8,7 +8,7 @@
     {
       "name": "supabuild",
       "description": "Orchestrates multi-agent builds, parallel design variants, Linear backlog burndown, and isolated worktree tasks — with a security audit and QA gate.",
-      "source": ".",
+      "source": "./plugins/supabuild",
       "homepage": "https://github.com/jaequery/supabuild"
     }
   ]

@@ -1,17 +1,11 @@
 # Ignore everything
 *
 
-# Allowlist: plugin manifest
+# Allowlist: marketplace catalog at root + plugin tree
 !.claude-plugin/
 !.claude-plugin/**
-
-# Allowlist: skills tree
-!skills/
-!skills/**
-
-# Allowlist: agents tree
-!agents/
-!agents/**
+!plugins/
+!plugins/**
 
 # Allowlist: repo-level meta
 !.gitignore
