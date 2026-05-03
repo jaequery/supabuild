@@ -80,12 +80,6 @@ Drains every **Todo** ticket. Sequential, one PR per ticket, base branch `main`.
 
 Creates a new ticket in **Todo** from your sentence first, then includes it in the run.
 
-```
-/supabuild linear --team ENG --limit 5 --parallel 3 --dry-run
-```
-
-Flags exist for when you need them (scope to a team, cap the queue, run in parallel, list-only). The no-argument form is the one you'll reach for 90% of the time.
-
 ## Without Linear
 
 The same primitives are exposed directly if Linear isn't your tracker:
