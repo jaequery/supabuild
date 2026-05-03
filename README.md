@@ -18,6 +18,25 @@ If you've left Claude Code running for thirty minutes on a real task, you've hit
 
 **You get one design option when you wanted three.** "Redesign the empty state" comes back as a single take you then have to argue with. `/supabuild design` builds 2–10 divergent variants in parallel, each in its own worktree, and opens an HTML gallery with screenshots so you can pick one.
 
+## Key features
+
+Everything that has to be true for a Claude Code build to ship without you babysitting it.
+
+- **Ticket queue burndown** — `/supabuild linear` (§C) and `/supabuild github` (§E) drain a `Todo` column one ticket at a time, one PR per ticket, with state and label transitions narrated as comments.
+- **Multi-agent orchestration** — a Team Lead picks 2–10 specialist subagents per build, dispatches independent ones in parallel and dependent ones in sequence, and renders the final go/no-go itself (§A.2 step 7, §A.3).
+- **Live plan artifact** — the §A.2 plan is written to `$WT_PATH/.supabuild/plan.md` and mirrored into the Linear/GitHub ticket description and PR body, updated on every round, security finding, QA verdict, and ship (§A.2.5).
+- **Isolated worktree per task** — every build runs in a sibling `git worktree` on its own branch, so parallel runs never share an index and the main checkout stays untouched (§A.1).
+- **Per-worktree DB branch** — Postgres, MySQL/MariaDB, and Mongo are auto-detected from `docker-compose.yml`; each worktree gets its own logical database, wired into `$WT_PATH/.env`, and dropped on ship (§A.1.5).
+- **Security audit gate** — a Security agent reviews only the diff since `$BASE_SHA`; any Critical or High finding hard-blocks the ship and forces a fix round (§A.4).
+- **Playwright walkthrough as APPROVED precondition** — when the diff touches UI, `playwright-cli` boots the project's dev server, records a `.webm` walkthrough plus step PNGs, and the file must exist and be ≥50KB or APPROVED is refused (§A.5 step 3, §A.5a).
+- **Polish & gap pass** — before QA, the Team Lead walks an explicit edge-case / a11y / responsive / observability checklist and dispatches a scoped polish round if the list isn't trivial (§A.4.5).
+- **Parallel design exploration** — `/supabuild design` produces 2–10 divergent variants, each in its own worktree, judged by a Design Lead on thesis fidelity / craft / differentiation, surfaced via an auto-opened HTML gallery (§B.2, §B.6, §B.6.5).
+- **First-run GitHub setup** — on first invocation in a repo, `/supabuild github` creates the Projects v2 board, the `Status` field with `Todo / In Progress / In Review / Done`, and the four labels supabuild uses; idempotent thereafter (§E.0.5).
+- **One-PR-per-ticket isolation** — a `gh pr list` snapshot is taken before the §A flow runs and re-checked after; zero or more than one new PR for the ticket's branch stops the loop (§C.3c, §E.3).
+- **Auth-gated image hydration** — Linear `uploads.linear.app` attachments are downloaded with the user's token (parallel, capped at 8) and dropped on disk so the agents can actually see them; GitHub `user-attachments` URLs get the same treatment (§C.3a-img, §E.3a-img).
+- **Evidence stays off the diff** — walkthrough videos and step screenshots live under `$WT_PATH/.supabuild/evidence/` and are uploaded to the ticket or PR comment, never committed, so `git log` and `Files changed` stay clean (§A.5.5).
+- **Auth-gap walkthrough** — on first run, missing `gh` or `linear-cli` install/auth is detected, what can be installed via `brew`/`npm` is, and the one or two `auth login` commands you still need are printed before a long build can start (§A.1 preflight, §C.1).
+
 ## Install
 
 ```bash
