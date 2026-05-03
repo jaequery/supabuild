@@ -1,6 +1,61 @@
 # supabuild
 
-A single `/supabuild` slash command for Claude Code that orchestrates multi-agent builds, parallel design exploration, Linear backlog burndown, and isolated worktree tasks — with a security audit and QA gate built in.
+Ship your Linear backlog while you're not at the keyboard — one isolated PR per ticket, narrated back to the ticket as it happens.
+
+A single `/supabuild` slash command for Claude Code. Linear-first, with build / design / worktree modes available standalone if you don't use Linear.
+
+---
+
+## What it does
+
+You have a Linear backlog. It is not getting smaller.
+
+Run this:
+
+```
+/supabuild linear
+```
+
+Every ticket in **Todo** gets picked up in priority order. Each one gets its own isolated git worktree, runs through a plan → multi-agent build → security audit → QA-gate-with-walkthrough-video loop, opens a PR against `main`, and leaves a paper trail of comments on the Linear ticket so anyone watching can follow along without opening the terminal.
+
+When the run finishes, the column has drained, every ticket sits in **In Review**, and each one has a video walkthrough, step screenshots, a PR link, and a timeline of what happened.
+
+## What a stakeholder sees on a single ticket
+
+The ticket is the dashboard. This is the only thing they need to look at.
+
+```
+ENG-130 — Fix invoice rounding bug on the billing page
+─ state: Todo → In Progress
+─ 🤖 picked up by /supabuild linear
+       Route: BUILD · Position in queue: 2 / 5
+─ label +Building
+─ 🛠️ build started
+       Working branch: supabuild/eng-130-invoice-rounding-…
+       Target (PR base): main
+       Mode: plan → parallel specialists → security audit → QA + code review
+─ label −Building, +Testing
+─ 🎬 walkthrough captured (00-walkthrough.webm, 4 step screenshots)
+─ ✅ QA + code review APPROVED (1 round)
+─ 📎 walkthrough.webm + step screenshots uploaded to ticket
+─ 🔗 PR opened: github.com/…/pull/46
+─ state: In Progress → In Review
+─ label −Testing
+```
+
+A non-technical co-founder, a client, an investor, your future self looking at this ticket on Monday morning — none of them have to ask "what happened with this?". The answer is on the ticket.
+
+## Why this is worth your time
+
+A few things that aren't obvious until you've tried to wire this up yourself:
+
+- **One PR per ticket, never bundled.** A Linear ticket → a git branch → a PR. No mega-PRs mixing four tickets that need to be carefully untangled in review.
+- **Isolated worktrees.** Each ticket runs in its own `git worktree`, so it can't trample your local checkout, and ticket N+1 starts from the same clean baseline as ticket N regardless of what ticket N did.
+- **QA gate, not a vibe check.** Every UI-bearing diff captures a Playwright walkthrough video and step screenshots that get uploaded to the ticket. If the walkthrough is missing or under 50 KB, the build does not get marked APPROVED. "Looks good to me" is not a verdict the gate accepts.
+- **Security audit on every build.** A security-focused subagent reviews the diff before the QA gate runs. Findings either get fixed in the same round or escalated.
+- **Design fork for UI tickets.** If a ticket has a UI label or UI keywords, the path forks: 4 divergent design variants get built in parallel, screenshots posted back to the ticket as their own comments, then the ticket moves to **Todo** with a `Choose Design` label. A human picks. The next run goes straight to build.
+- **A single label is the stop button.** `Choose Design` parks a ticket until you decide. `design-selected` resumes it. No bot config, no separate dashboard — the Linear ticket is the source of truth.
+- **Linear is the audit log.** Every state move, label flip, dispatch, and verdict is a comment on the ticket. Async standup writes itself.
 
 ## Install
 
@@ -9,108 +64,43 @@ claude plugin marketplace add jaequery/supabuild
 claude plugin install supabuild@supabuild
 ```
 
-## Usage
+You'll also need [`@schpet/linear-cli`](https://github.com/schpet/linear-cli) authed against your workspace, and `gh` for PR creation.
 
-`/supabuild` routes on the first token. When invoked without a mode token, it defaults to `build`.
-
-- `/supabuild build <task description>` — Multi-agent build with security audit and a final QA gate that loops until clean.
-- `/supabuild design <task description>` — Parallel design-variant exploration (2–10 variants, each in its own isolated git worktree and branch).
-- `/supabuild linear` — Ship every Linear ticket sitting in **Todo**, one isolated worktree and one PR per ticket. No args needed.
-- `/supabuild linear <task description>` — Same thing, but first creates a new Linear ticket from your description (e.g. `/supabuild linear fix login issue`) and includes it in the run.
-- `/supabuild worktree <task>` — Execute a task in an isolated git worktree with a 6-option cleanup menu when done.
-
-## Example workflow
-
-A typical end-to-end run — design exploration first, then a clean build, then autonomous backlog burndown for the follow-ups.
-
-### 1. Explore design directions
-
-```
-/supabuild design build a settings page with profile, billing, and team management
-```
-
-The Design Lead drafts a brief, spins up N parallel worktrees, and dispatches a per-variant team into each:
-
-```
-| Variant         | Branch                                | Worktree                              |
-|-----------------|---------------------------------------|---------------------------------------|
-| swiss-grid      | supabuild-design/settings-swiss-grid  | ../repo.supabuild-design-settings-... |
-| brutalist       | supabuild-design/settings-brutalist   | ../repo.supabuild-design-settings-... |
-| editorial-serif | supabuild-design/settings-editorial   | ../repo.supabuild-design-settings-... |
-| playful-collage | supabuild-design/settings-playful     | ../repo.supabuild-design-settings-... |
-```
-
-After the build round, an HTML gallery opens in your browser with screenshots, scores, and **Pick / Redo / Kill** buttons. You pick `swiss-grid`.
-
-### 2. Build the chosen direction
-
-```
-/supabuild build implement the settings page using the swiss-grid variant from supabuild-design/settings-swiss-grid --branch main
-```
-
-A plan is announced, 2–10 specialists are dispatched in parallel, a security audit and polish pass run, and a Playwright walkthrough video is captured for any UI-bearing diff. Then it ships:
-
-```
-## /supabuild build — APPROVED
-**Branch:** supabuild/settings-page-20260502-...
-**Commits:** 4, 0408728..b9bc3e4
-**Rounds run:** 1
-```
-
-The branch is pushed, a PR opened against the target, and the worktree + local branch are removed automatically.
-
-### 3. Burn down the related tickets
-
-With the page live, drain the rest of your Linear **Todo** queue in one pass:
+## The three Linear forms
 
 ```
 /supabuild linear
 ```
 
-That's the whole command. No flags, no team key, no limit. It picks up every ticket sitting in **Todo**, processes them one at a time, and ships an isolated PR per ticket against `main`.
-
-Or kick off a single new ticket from a sentence — it gets created in Linear first, then immediately worked on:
+Drains every **Todo** ticket. Sequential, one PR per ticket, base branch `main`. No flags, no team key, no limit.
 
 ```
 /supabuild linear fix the invoice rounding bug on the billing page
 ```
 
-### 4. Watch the work narrate itself in Linear
-
-Every state change, label flip, and dispatch lands as a comment on the ticket as it happens, so anyone watching in Linear sees the full timeline without ever opening the terminal:
+Creates a new ticket in **Todo** from your sentence first, then includes it in the run.
 
 ```
-ENG-130
-─ state: Todo → In Progress
-─ 🤖 picked up by /supabuild linear
-       Route: BUILD · Position in queue: 2 / 5
-─ label +Building
-─ 🛠️ build started
-       Working branch: supabuild/eng-130-invoice-rounding-…
-       Target (PR base): main
-       Mode: plan → parallel specialists → security audit → QA gate
-─ label −Building, +Testing
-─ 🎬 walkthrough captured (00-walkthrough.webm, 4 step screenshots)
-─ ✅ QA + code review APPROVED (1 round)
-─ 📎 walkthrough.webm + step screenshots uploaded
-─ 🔗 PR opened: github.com/…/pull/46
-─ state: In Progress → In Review
-─ label −Testing
+/supabuild linear --team ENG --limit 5 --parallel 3 --dry-run
 ```
 
-For UI-flavored tickets the path forks into design exploration first — the Design Lead spins up N divergent variants in parallel, posts each variant's screenshots back to the ticket as its own comment, then drops the ticket back into **Todo** with a `Choose Design` label so a human can pick. The next `/supabuild linear` run sees the pick and goes straight to the build path.
+Flags exist for when you need them (scope to a team, cap the queue, run in parallel, list-only). The no-argument form is the one you'll reach for 90% of the time.
 
-When the run finishes you get a single summary table:
+## Without Linear
 
-```
-## /supabuild linear — summary
-| Ticket  | Verdict   | PR                       | Linear comment           | Rounds |
-|---------|-----------|--------------------------|--------------------------|--------|
-| ENG-123 | APPROVED  | github.com/…/pull/45     | linear.app/…/comment-…   | 1      |
-| ENG-130 | APPROVED  | github.com/…/pull/46     | linear.app/…/comment-…   | 2      |
-```
+The same primitives are exposed directly if Linear isn't your tracker:
 
-For one-off scratch work that doesn't need the full QA gate, `/supabuild worktree <task>` gives you the isolated branch and the same 6-option cleanup menu — no agents dispatched.
+- `/supabuild build <task>` — Plan → parallel specialist build → security audit → QA gate, looping until clean. Works against any branch.
+- `/supabuild design <task>` — N divergent design variants in parallel, each in its own worktree. An HTML gallery opens with screenshots and Pick / Redo / Kill buttons.
+- `/supabuild worktree <task>` — Spin up a side-branch workspace with a 6-option cleanup menu when done. No agents dispatched.
+
+These are the same building blocks the Linear flow runs on, just without the ticket narration layer.
+
+## What it isn't
+
+- Not a CI replacement. The build runs locally in your Claude Code session; CI still runs on the resulting PR.
+- Not a server-side Linear bot. Close the Claude session and the run stops. There's no daemon, no cloud, no auth tokens stored anywhere supabuild controls.
+- Not free of Linear vendor lock-in (the Linear flow specifically) — but the work itself is plain git branches and plain GitHub PRs. Worst case you check out the branch and finish by hand.
 
 ## What's inside
 
