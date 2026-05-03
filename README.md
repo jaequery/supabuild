@@ -61,18 +61,53 @@ The branch is pushed, a PR opened against the target, and the worktree + local b
 
 ### 3. Burn down the related tickets
 
-With the page live, drain the rest of the team's Linear queue in one pass — each ticket gets its own worktree, isolated PR, walkthrough uploaded back to Linear, and the right state transition (`Todo → In Progress → In Review`):
+With the page live, drain the rest of your Linear **Todo** queue in one pass:
 
 ```
-/supabuild linear --team ENG --limit 5
+/supabuild linear
 ```
+
+That's the whole command. No flags, no team key, no limit. It picks up every ticket sitting in **Todo**, processes them one at a time, and ships an isolated PR per ticket against `main`.
+
+Or kick off a single new ticket from a sentence — it gets created in Linear first, then immediately worked on:
+
+```
+/supabuild linear fix the invoice rounding bug on the billing page
+```
+
+### 4. Watch the work narrate itself in Linear
+
+Every state change, label flip, and dispatch lands as a comment on the ticket as it happens, so anyone watching in Linear sees the full timeline without ever opening the terminal:
+
+```
+ENG-130
+─ state: Todo → In Progress
+─ 🤖 picked up by /supabuild linear
+       Route: BUILD · Position in queue: 2 / 5
+─ label +Building
+─ 🛠️ build started
+       Working branch: supabuild/eng-130-invoice-rounding-…
+       Target (PR base): main
+       Mode: plan → parallel specialists → security audit → QA gate
+─ label −Building, +Testing
+─ 🎬 walkthrough captured (00-walkthrough.webm, 4 step screenshots)
+─ ✅ QA + code review APPROVED (1 round)
+─ 📎 walkthrough.webm + step screenshots uploaded
+─ 🔗 PR opened: github.com/…/pull/46
+─ state: In Progress → In Review
+─ label −Testing
+```
+
+For UI-flavored tickets the path forks into design exploration first — the Design Lead spins up N divergent variants in parallel, posts each variant's screenshots back to the ticket as its own comment, then drops the ticket back into **Todo** with a `Choose Design` label so a human can pick. The next `/supabuild linear` run sees the pick and goes straight to the build path.
+
+When the run finishes you get a single summary table:
 
 ```
 ## /supabuild linear — summary
-| Ticket  | Verdict   | PR                              | Linear comment           | Rounds |
-|---------|-----------|---------------------------------|--------------------------|--------|
-| ENG-123 | APPROVED  | github.com/.../pull/45          | linear.app/.../comment-… | 1      |
-| ENG-130 | APPROVED  | github.com/.../pull/46          | linear.app/.../comment-… | 2      |
+| Ticket  | Verdict   | PR                       | Linear comment           | Rounds |
+|---------|-----------|--------------------------|--------------------------|--------|
+| ENG-123 | APPROVED  | github.com/…/pull/45     | linear.app/…/comment-…   | 1      |
+| ENG-130 | APPROVED  | github.com/…/pull/46     | linear.app/…/comment-…   | 2      |
 ```
 
 For one-off scratch work that doesn't need the full QA gate, `/supabuild worktree <task>` gives you the isolated branch and the same 6-option cleanup menu — no agents dispatched.
