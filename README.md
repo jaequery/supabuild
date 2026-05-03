@@ -15,7 +15,8 @@ claude plugin install supabuild@supabuild
 
 - `/supabuild build <task description>` — Multi-agent build with security audit and a final QA gate that loops until clean.
 - `/supabuild design <task description>` — Parallel design-variant exploration (2–10 variants, each in its own isolated git worktree and branch).
-- `/supabuild linear` — Burn down every Linear ticket in the Todo workflow status, one isolated worktree and PR per ticket.
+- `/supabuild linear` — Ship every Linear ticket sitting in **Todo**, one isolated worktree and one PR per ticket. No args needed.
+- `/supabuild linear <task description>` — Same thing, but first creates a new Linear ticket from your description (e.g. `/supabuild linear fix login issue`) and includes it in the run.
 - `/supabuild worktree <task>` — Execute a task in an isolated git worktree with a 6-option cleanup menu when done.
 
 ## Example workflow
