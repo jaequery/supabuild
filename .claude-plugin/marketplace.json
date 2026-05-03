@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "supabuild",
+  "owner": {
+    "name": "Jae Lee"
+  },
+  "plugins": [
+    {
+      "name": "supabuild",
+      "description": "Multi-agent build, design, Linear-burndown, and worktree skill — orchestrated by a Team Lead with security audit and QA gate.",
+      "source": ".",
+      "homepage": "https://github.com/jaequery/supabuild"
+    }
+  ]
+}

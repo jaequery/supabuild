@@ -19,7 +19,8 @@
 !LICENSE
 
 # Block runtime evidence artifacts even if they land inside allowlisted dirs
-.team-build/
+.supabuild/
+.supabuild-design/
 playwright-output/
 playwright-report/
 test-results/

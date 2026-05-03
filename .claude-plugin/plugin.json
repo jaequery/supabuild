@@ -1,7 +1,7 @@
 {
   "name": "supabuild",
   "version": "0.1.0",
-  "description": "Team-Lead-orchestrated multi-agent build/design/Linear/worktree skill with security audit and QA gate, distilled from the jaequery plugin into a single /supabuild slash command with mode routing.",
+  "description": "Multi-agent build, design, Linear-burndown, and worktree skill — orchestrated by a Team Lead with security audit and QA gate. Single /supabuild slash command with mode routing.",
   "author": {
     "name": "Jae Lee",
     "url": "https://github.com/jaequery"
@@ -10,7 +10,7 @@
   "repository": "https://github.com/jaequery/supabuild",
   "license": "MIT",
   "keywords": [
-    "team-build",
+    "supabuild",
     "multi-agent",
     "worktree",
     "linear",

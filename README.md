@@ -1,6 +1,6 @@
 # supabuild
 
-A single `/supabuild` slash command for Claude Code: Team-Lead-orchestrated multi-agent builds, parallel design exploration, Linear backlog burndown, and isolated worktree tasks — with a security audit and QA gate built in.
+A single `/supabuild` slash command for Claude Code: a Team Lead orchestrates multi-agent builds, parallel design exploration, Linear backlog burndown, and isolated worktree tasks — with a security audit and QA gate built in.
 
 ## Install
 
@@ -13,7 +13,7 @@ claude plugin install supabuild@supabuild
 
 `/supabuild` routes on the first token. When invoked without a mode token, it defaults to `build`.
 
-- `/supabuild build <task description>` — Team-Lead-orchestrated multi-agent build with security audit and a final QA gate that loops until clean.
+- `/supabuild build <task description>` — Multi-agent build with security audit and a final QA gate that loops until clean.
 - `/supabuild design <task description>` — Parallel design-variant exploration (2–10 variants, each in its own isolated git worktree and branch).
 - `/supabuild linear` — Burn down every Linear ticket in the Todo workflow status, one isolated worktree and PR per ticket.
 - `/supabuild worktree <task>` — Execute a task in an isolated git worktree with a 6-option cleanup menu when done.
