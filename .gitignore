@@ -1,0 +1,28 @@
+# Ignore everything
+*
+
+# Allowlist: plugin manifest
+!.claude-plugin/
+!.claude-plugin/**
+
+# Allowlist: skills tree
+!skills/
+!skills/**
+
+# Allowlist: agents tree
+!agents/
+!agents/**
+
+# Allowlist: repo-level meta
+!.gitignore
+!README.md
+!LICENSE
+
+# Block runtime evidence artifacts even if they land inside allowlisted dirs
+.team-build/
+playwright-output/
+playwright-report/
+test-results/
+node_modules/
+*.webm
+*.mp4
