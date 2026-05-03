@@ -1,6 +1,6 @@
 # supabuild
 
-A single `/supabuild` slash command for Claude Code: a Team Lead orchestrates multi-agent builds, parallel design exploration, Linear backlog burndown, and isolated worktree tasks — with a security audit and QA gate built in.
+A single `/supabuild` slash command for Claude Code that orchestrates multi-agent builds, parallel design exploration, Linear backlog burndown, and isolated worktree tasks — with a security audit and QA gate built in.
 
 ## Install
 
