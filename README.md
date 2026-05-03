@@ -44,7 +44,7 @@ After the build round, an HTML gallery opens in your browser with screenshots, s
 ### 2. Build the chosen direction
 
 ```
-/supabuild build implement the settings page using the swiss-grid variant from supabuild-design/settings-swiss-grid
+/supabuild build implement the settings page using the swiss-grid variant from supabuild-design/settings-swiss-grid --branch main
 ```
 
 A plan is announced, 2–10 specialists are dispatched in parallel, a security audit and polish pass run, and a Playwright walkthrough video is captured for any UI-bearing diff. Then it ships:
