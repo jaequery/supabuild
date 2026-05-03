@@ -144,6 +144,43 @@ the user can audit. From now on, **all** Read/Edit/Write use absolute paths
 under `$WT_PATH/…`, and every Bash call needing the worktree as cwd
 prefixes `cd "$WT_PATH" && …` in the same call.
 
+**Persist upstream-ticket context (if any).** If the prompt body
+declares an upstream ticket via the `SUPABUILD_TICKET=<kind>:<id>`
+line (set by §C.3a for linear or §E.3c for github), write the values
+to `$WT_PATH/.supabuild/ticket.env` so the §A.2.5b mirror helper
+can find them across the many separate Bash invocations that make
+up a build (each invocation is a fresh shell — env vars set in one
+call don't survive into the next, hence the file).
+
+```bash
+mkdir -p "$WT_PATH/.supabuild"
+# Parse the SUPABUILD_TICKET line out of the prompt body. Two
+# accepted shapes:
+#   SUPABUILD_TICKET=linear:ENG-123
+#   SUPABUILD_TICKET=github:42:owner/repo
+case "$SUPABUILD_TICKET" in
+  linear:*)
+    {
+      echo "SUPABUILD_TICKET_KIND=linear"
+      echo "SUPABUILD_TICKET_ID=${SUPABUILD_TICKET#linear:}"
+    } > "$WT_PATH/.supabuild/ticket.env"
+    ;;
+  github:*)
+    rest=${SUPABUILD_TICKET#github:}
+    {
+      echo "SUPABUILD_TICKET_KIND=github"
+      echo "SUPABUILD_TICKET_ID=${rest%%:*}"
+      echo "SUPABUILD_TICKET_REPO=${rest#*:}"
+    } > "$WT_PATH/.supabuild/ticket.env"
+    ;;
+  ""|*)  : ;;  # standalone build — no ticket
+esac
+```
+
+Skip silently when `$SUPABUILD_TICKET` is unset or malformed —
+standalone runs have no upstream ticket and the helper's `none`
+branch handles that correctly.
+
 ### A.1.5 Per-worktree database branch (ORM-agnostic, auto-detected)
 
 Parallel worktrees that all hit the same dev database trample each
@@ -388,7 +425,217 @@ needed"), STOP and either re-derive it from the codebase or add the
 missing question to a §A.0.5 follow-up batch. Do not dispatch on a
 plan with holes — those holes become bugs.
 
+### A.2.5 Plan artifact (write to disk + mirror to ticket/PR)
+
+The plan announced in §A.2 is also persisted as a **live artifact**
+that survives the chat session, gets ticked off as work progresses,
+and — when running under §C (linear) or §E (github) — mirrors into
+the ticket description so a human watching the ticket sees the
+current state without opening the terminal.
+
+The artifact has three sinks; **plan.md is always written**, the
+others activate when their context is present:
+
+1. **`$WT_PATH/.supabuild/plan.md`** — always. Source of truth on
+   disk. Survives an aborted run; a resumed run can re-read it.
+2. **Ticket description** — when invoked by §C or §E (i.e. when the
+   env signals `SUPABUILD_TICKET_KIND` and `SUPABUILD_TICKET_ID` are
+   set in the build prompt body), splice plan.md between markers in
+   the Linear/GitHub issue description.
+3. **PR description** — once a PR exists in §A.6a, splice the same
+   block into the PR body alongside `## Walkthrough`. Reviewers see
+   goal/AC/risks at the top of the PR.
+
+> **Do NOT commit `plan.md`** — same rule as `.supabuild/evidence/`
+> in §A.5.5. The persistent copy lives on the ticket and the PR;
+> committing the worktree's copy would drag in-flight QA artifacts
+> through `git log` forever.
+
+#### A.2.5a Template (use exactly this skeleton)
+
+Marker fences are HTML comments — invisible in rendered Markdown,
+load-bearing for the splice helper. Do not change them.
+
+```markdown
+<!-- supabuild:plan:start -->
+## 🤖 Supabuild plan
+**Status:** $STATUS · branch `$BRANCH` · target `${TARGET_BRANCH:-none}`
+**Worktree:** `$WT_PATH`
+**Updated:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+### Goal
+<one line from §A.2.1>
+
+### Acceptance criteria
+- [ ] <criterion 1>
+- [ ] <criterion 2>
+…
+
+### Out of scope
+- <bullet from §A.2.2>
+
+### Architecture
+**New files**
+- `path` — purpose
+
+**Modified files**
+- `path` — what changes
+
+**Data**
+- <migration / schema change / "no DB changes">
+
+**Surfaces**
+- Routes: <list> · Jobs: <list> · Events: <list> · Env: <list>
+
+### Risks & mitigations
+- <risk> → <mitigation>
+
+### Verification map
+| # | Criterion | Proof |
+|---|-----------|-------|
+| 1 | <crit> | <test / shot / transcript> |
+
+### Rollback
+- <feature flag / migration reverse / kill switch / "revert PR is safe">
+
+### Round log
+- (filled in as rounds run; see A.2.5c)
+<!-- supabuild:plan:end -->
+```
+
+`$STATUS` values, in order through the run:
+`planning` → `round 1/3` → `round 2/3` → `qa-gate` → `approved` →
+`shipped` (or `escalated` / `failed` on terminal failure paths).
+
+#### A.2.5b Helpers (define once at the top of the build, reuse below)
+
+The helpers are POSIX-shell, ORM-agnostic, and depend only on `jq`,
+`awk`, and the relevant CLI (`linear` or `gh`). Define them at the
+start of §A.3, before the first round dispatch:
+
+```bash
+# Always-on: write plan.md to disk.
+sb_plan_write() {
+  mkdir -p "$WT_PATH/.supabuild"
+  printf '%s\n' "$1" > "$WT_PATH/.supabuild/plan.md"
+}
+
+# Idempotent splice: replace the fenced block in $1 with $2, or
+# append it (separated by `---`) if no fence exists. Preserves
+# everything outside the fences exactly.
+sb_plan_splice() {
+  local existing="$1" plan="$2"
+  local fenced
+  fenced=$(printf '<!-- supabuild:plan:start -->\n%s\n<!-- supabuild:plan:end -->' "$plan")
+  if printf '%s' "$existing" | grep -q '<!-- supabuild:plan:start -->'; then
+    printf '%s' "$existing" | awk -v new="$fenced" '
+      BEGIN { skip=0 }
+      /<!-- supabuild:plan:start -->/ { print new; skip=1; next }
+      /<!-- supabuild:plan:end -->/ { skip=0; next }
+      !skip { print }
+    '
+  elif [ -n "$existing" ]; then
+    printf '%s\n\n---\n\n%s\n' "$existing" "$fenced"
+  else
+    printf '%s\n' "$fenced"
+  fi
+}
+
+# Mirror plan.md into the upstream ticket description (no-op when no
+# orchestrator wrote the ticket-context file). Best-effort: failures
+# log and continue — never block the build on a description edit.
+#
+# Reads $WT_PATH/.supabuild/ticket.env if present. Format:
+#   SUPABUILD_TICKET_KIND=linear|github
+#   SUPABUILD_TICKET_ID=<id-or-number>
+#   SUPABUILD_TICKET_REPO=<owner/repo>   # github only
+# The file is written once by the orchestrator (§C.3a-pre / §E.3a-pre)
+# right after the worktree is created. Sourcing it inside the helper
+# keeps the env alive across the many separate Bash tool invocations
+# that make up a build (each invocation is a fresh shell).
+sb_plan_mirror_ticket() {
+  local plan; plan=$(cat "$WT_PATH/.supabuild/plan.md" 2>/dev/null) || return 0
+  [ -z "$plan" ] && return 0
+  [ -f "$WT_PATH/.supabuild/ticket.env" ] && \
+    . "$WT_PATH/.supabuild/ticket.env"
+  case "${SUPABUILD_TICKET_KIND:-}" in
+    linear)
+      local cur; cur=$(linear issue view "$SUPABUILD_TICKET_ID" --json 2>/dev/null \
+        | jq -r '.description // ""')
+      sb_plan_splice "$cur" "$plan" > "/tmp/sb-plan-mirror-$$.md"
+      linear issue update "$SUPABUILD_TICKET_ID" \
+        --description-file "/tmp/sb-plan-mirror-$$.md" \
+        || echo "warn: plan mirror to Linear $SUPABUILD_TICKET_ID failed (continuing)"
+      rm -f "/tmp/sb-plan-mirror-$$.md"
+      ;;
+    github)
+      local cur; cur=$(gh issue view "$SUPABUILD_TICKET_ID" \
+        --repo "$SUPABUILD_TICKET_REPO" --json body -q '.body // ""' 2>/dev/null)
+      sb_plan_splice "$cur" "$plan" > "/tmp/sb-plan-mirror-$$.md"
+      gh issue edit "$SUPABUILD_TICKET_ID" --repo "$SUPABUILD_TICKET_REPO" \
+        --body-file "/tmp/sb-plan-mirror-$$.md" \
+        || echo "warn: plan mirror to GitHub #$SUPABUILD_TICKET_ID failed (continuing)"
+      rm -f "/tmp/sb-plan-mirror-$$.md"
+      ;;
+    ""|none) : ;;  # standalone build — disk only
+  esac
+}
+
+# Combined: write + mirror. Call after every plan mutation.
+sb_plan_update() { sb_plan_write "$1"; sb_plan_mirror_ticket; }
+```
+
+The orchestrator modes (§C, §E) write `$WT_PATH/.supabuild/ticket.env`
+once at worktree-creation time with `SUPABUILD_TICKET_KIND`,
+`SUPABUILD_TICKET_ID`, and (for github) `SUPABUILD_TICKET_REPO`.
+Standalone `/supabuild build` runs don't write the file → the `none`
+branch fires → plan.md still lands on disk.
+
+Example file the orchestrator writes:
+```
+SUPABUILD_TICKET_KIND=linear
+SUPABUILD_TICKET_ID=ENG-123
+```
+
+#### A.2.5c When to update
+
+| Step | Action | New `$STATUS` |
+|---|---|---|
+| §A.2 done (before §A.3 dispatch) | First write — full template populated from §A.2 | `planning` → `round 1/N` |
+| §A.3 round complete | Append round log entry; tick AC the round demonstrably proved | `round k/N` |
+| §A.4 findings | Update **Risks & mitigations** with security findings + status | (unchanged) |
+| §A.4.5 polish list | Append polish-pass summary to round log | (unchanged) |
+| §A.5 verdict APPROVED | Tick remaining AC; status flips | `approved` |
+| §A.5 verdict NEEDS ANOTHER ROUND | Append remediation list as next round entry | `round k+1/N` |
+| §A.6a PR opened | Append `**PR:** <url>` line; status flips | `shipped` |
+| §A.6 ESCALATED / FAILED | Capture blocker in round log; status flips | `escalated` / `failed` |
+
+Round log entry format (one bullet per agent per round):
+```markdown
+- **R$N $agent** — <one-line outcome> (<commits>)
+```
+
+Call `sb_plan_update "$NEW_PLAN"` once after each transition. The
+helper is cheap (one `awk` + one CLI call), and a missed mirror just
+means the ticket lags by a phase — never a build blocker.
+
 ### A.3. Build round (parallel where possible)
+
+**Before dispatching round 1**, define the §A.2.5b helpers in the
+shell context and write the initial plan to disk + ticket:
+
+```bash
+# (helpers from §A.2.5b — sb_plan_write, sb_plan_splice,
+# sb_plan_mirror_ticket, sb_plan_update — defined here, used below)
+
+PLAN_BODY=$(cat <<'EOF'
+<!-- supabuild:plan:start -->
+… (the §A.2.5a template, populated from the §A.2 announcement) …
+<!-- supabuild:plan:end -->
+EOF
+)
+sb_plan_update "$PLAN_BODY"
+```
 
 Dispatch the build agents. Each agent prompt MUST include:
 
@@ -417,6 +664,12 @@ gaps?
 If integration is broken, the Team Lead either fixes it inline (small) or
 dispatches a follow-up agent (large) before proceeding.
 
+**Plan update — round complete.** Append a `**R$N $agent**` bullet
+under `### Round log` for each agent that ran, tick any AC the round
+demonstrably proved (with the proof artifact noted in the
+verification map), and bump `**Status:**` to `round $((N+1))/3` if
+another round is expected. Then call `sb_plan_update "$PLAN_BODY"`.
+
 ### A.4. Security audit pass
 
 Dispatch the Security agent (and `Blockchain Security Auditor` /
@@ -436,6 +689,10 @@ If there are **any** Critical or High findings, the Team Lead MUST dispatch a
 fix round (back to §A.3 with a narrower scope) before continuing. Mediums
 are judgment calls; the Team Lead decides. Lows/Info are noted in the final
 report but do not block.
+
+**Plan update — security findings.** Add each Critical/High/Medium
+finding to `### Risks & mitigations` as `<finding> → <fix or status>`.
+Lows/Info don't need a plan entry. Call `sb_plan_update "$PLAN_BODY"`.
 
 ### A.4.5 Polish & gap pass — what is the user missing?
 
@@ -780,6 +1037,14 @@ Team Lead stops and hands back to the user with: a status report, what's
 blocking, and a recommendation (continue, change scope, or abandon).
 Don't burn tokens grinding past a structural problem — escalate.
 
+**Plan update — verdict.** On APPROVED: tick every remaining AC,
+flip `**Status:**` to `approved`, and call `sb_plan_update`. On NEEDS
+ANOTHER ROUND: append the remediation list as the next round entry
+in `### Round log`, bump status to `round $((N+1))/3`, and call
+`sb_plan_update` before looping back to §A.3. On the 3-round
+escalation: flip status to `escalated`, capture the blocker in the
+round log, call `sb_plan_update` once before handing back.
+
 ### A.5.5 Visual evidence (verify on disk — do NOT commit)
 
 For UI work, the walkthrough video and stills already exist under
@@ -895,6 +1160,34 @@ for uploading the actual files to Linear / a PR comment.
    - LEASE empty: `git -C "$WT_PATH" push -u origin "$BRANCH"`.
 10. `cd "$WT_PATH" && gh pr create --fill --base "$TARGET_BRANCH"`. If
     `gh` is missing, print the push URL from step 9 and stop.
+10.5. **Mirror the plan into the PR body.** `gh pr create --fill`
+    seeds the PR body from the latest commit message — replace it
+    with the same fenced plan block that's on the ticket so reviewers
+    see goal/AC/risks/round log without leaving the PR. Run after
+    `gh pr create` returns; failure is non-fatal (plan still lives on
+    the ticket and on disk).
+    ```bash
+    PR_NUMBER=$(gh pr view --json number -q '.number')
+    PR_BODY=$(gh pr view --json body -q '.body // ""')
+    PLAN_BODY_FOR_PR=$(cat "$WT_PATH/.supabuild/plan.md" 2>/dev/null)
+    if [ -n "$PLAN_BODY_FOR_PR" ]; then
+      sb_plan_splice "$PR_BODY" "$PLAN_BODY_FOR_PR" \
+        > "/tmp/sb-pr-body-$$.md"
+      gh pr edit "$PR_NUMBER" --body-file "/tmp/sb-pr-body-$$.md" \
+        || echo "warn: PR body plan mirror failed (continuing)"
+      rm -f "/tmp/sb-pr-body-$$.md"
+    fi
+    ```
+    Also flip the plan's `**Status:**` to `shipped` and append a
+    `**PR:** $PR_URL` line under it before this mirror — that single
+    `sb_plan_update` call propagates the shipped status to the
+    ticket too:
+    ```bash
+    PR_URL=$(gh pr view --json url -q '.url')
+    # update plan.md status line + append PR link, then:
+    sb_plan_update "$PLAN_BODY"
+    # PR body mirror above will pick up the shipped status from disk.
+    ```
 11. **Auto-cleanup after successful push + PR**: once the PR has been
    opened (the branch lives on origin and locally), remove the worktree
    automatically — UNLESS an orchestrator has asked you to defer.

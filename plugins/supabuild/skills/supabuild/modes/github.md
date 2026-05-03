@@ -481,11 +481,21 @@ literally to suppress §A.0.5 discovery — the issue body is
 authoritative.)
 
 DEFER_WORKTREE_CLEANUP=1
+SUPABUILD_TICKET=github:$ISSUE_NUM:$REPO_FULL
 ```
 
 The `DEFER_WORKTREE_CLEANUP=1` signal makes §A.6a skip its own
 worktree sweep so §E.3d.5 can read evidence files (walkthrough.webm,
 step screenshots) off disk before final cleanup in §E.4.
+
+The `SUPABUILD_TICKET=github:$ISSUE_NUM:$REPO_FULL` signal lets
+§A.1 write `$WT_PATH/.supabuild/ticket.env` so the §A.2.5b mirror
+helper splices the live plan.md into this issue's body on every
+plan mutation (§A.2 first write, each round, security findings, QA
+verdict, ship). HTML-comment fences preserve the user-written
+issue body above and below. Mirror failures log and are
+non-blocking — the plan still lives on disk and (post-§E.3e) on
+the PR.
 
 ### E.3d.5. Walkthrough upload
 

@@ -768,6 +768,17 @@ Push policy for this run (non-negotiable):
   flow. Do NOT remove the worktree in §A.6a step 11 — §C.3d.5 needs
   the evidence files on disk and will clean up the worktree itself
   after upload completes.
+- **Plan mirror to this Linear ticket.** Pass the ticket coordinates
+  to §A so its plan helper (§A.2.5b) can splice the live plan.md
+  into this ticket's description on every plan mutation (§A.2 first
+  write, each round, security findings, QA verdict, ship). HTML-
+  comment fences preserve the user-written description above and
+  below. Mirror failures log a warning and are non-blocking.
+  Include this single line in the prompt body — §A.1 reads it and
+  writes `$WT_PATH/.supabuild/ticket.env`:
+  ```
+  SUPABUILD_TICKET=linear:$IDENT
+  ```
 - **"No UI surface mutation" is NOT a valid waiver reason.** The
   capture trigger is the §A.5 step-1 diff regex, not the agent's
   judgment about whether the change "feels visual." Conditional
