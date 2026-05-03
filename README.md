@@ -15,7 +15,7 @@ claude plugin marketplace add jaequery/supabuild
 claude plugin install supabuild@supabuild
 ```
 
-[`gh`](https://cli.github.com) is needed for any mode that opens a PR. `linear` mode also needs [`@schpet/linear-cli`](https://github.com/schpet/linear-cli). `github` mode needs `gh` with the `project` scope (run `gh auth refresh -s project,read:project` once). The skill detects missing CLIs or auth on first run and walks you through setup.
+That's it — start using it. The first time you run a mode that needs [`gh`](https://cli.github.com) or [`@schpet/linear-cli`](https://github.com/schpet/linear-cli), the skill detects what's missing, auto-installs whatever it can (via `brew` or `npm`), and prints the one or two `auth login` commands you need to paste — all in a single pass, so you're never round-tripped one nag at a time.
 
 ## Usage
 
