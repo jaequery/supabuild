@@ -2997,7 +2997,7 @@ task execution later fails mid-flight, the worktree persists unchanged;
 cd "$WT_PATH" && git log --oneline "$BASE_SHA"..HEAD
 cd "$WT_PATH" && git status
 
-Then print the 5-option menu (section §D.5) and wait for the user.
+Then print the 6-option menu (section §D.5) and wait for the user.
 
 ### D.5. Cleanup menu
 (a) keep worktree as-is
