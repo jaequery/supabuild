@@ -1,11 +1,11 @@
 # supabuild
 
-A `/supabuild` slash command for Claude Code. Four modes:
+A `/supabuild` slash command for Claude Code. The default is a multi-agent build pipeline; three keywords switch into other modes:
 
-- `build` — plan → multi-agent build → security audit → QA gate loop, in an isolated git worktree
-- `design` — generates N parallel UI design variants
-- `linear` — burns down a Linear "Todo" queue, one PR per ticket
-- `worktree` — thin `git worktree` wrapper
+- `/supabuild <task>` — plan → multi-agent build → security audit → QA gate loop, in an isolated git worktree (default)
+- `/supabuild design <task>` — generates N parallel UI design variants
+- `/supabuild linear` — burns down a Linear "Todo" queue, one PR per ticket
+- `/supabuild worktree <task>` — thin `git worktree` wrapper
 
 ## Install
 
@@ -19,7 +19,7 @@ For `linear` mode you'll also need [`@schpet/linear-cli`](https://github.com/sch
 ## Usage
 
 ```
-/supabuild build add an oauth login button to the navbar
+/supabuild add an oauth login button to the navbar
 ```
 
 Plans, dispatches 2–10 specialist subagents in parallel, runs a security audit and QA gate, loops until the work passes. Add `--branch main` to push and open a PR when done.

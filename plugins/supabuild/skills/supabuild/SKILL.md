@@ -11,7 +11,7 @@ description: >
   down a Linear "Todo" queue, one clean PR per ticket, narrating every
   state/label transition back into Linear; `worktree` is the thin
   `git worktree` wrapper used as a building block. Use when the user
-  says "/supabuild", "/supabuild build ...", "/supabuild design ...",
+  says "/supabuild ...", "/supabuild design ...",
   "/supabuild linear", "/supabuild worktree ...", "ceo build", "chief
   executive build", "build with a chief and team", "build this with a
   chief and team", "run this as a chief-led build", "multi-agent build",
@@ -91,7 +91,7 @@ not meet the bar.
 
 ### A.0. Inputs
 
-The user invokes `/supabuild build <task description>`. They may also pass:
+The user invokes `/supabuild <task description>` (the `build` keyword is also accepted as a back-compat alias and stripped). They may also pass:
 
 - A **target branch** (e.g. `--branch feature/foo` or "push to `develop`").
   If provided, the final approved work is pushed there and a PR is opened.
@@ -211,7 +211,7 @@ Preflight:
      `https://cli.github.com/manual/installation` and stop).
    - For `gh-auth`, print: "Run `gh auth login` in your terminal
      (pick GitHub.com → HTTPS → authenticate via browser), then
-     re-run `/supabuild build`." Stop the skill — never assume
+     re-run `/supabuild`." Stop the skill — never assume
      browser auth completed.
 
 Create:
