@@ -10,7 +10,7 @@ If you've left Claude Code running for thirty minutes on a real task, you've hit
 
 **It "ships" without ever opening a PR.** Claude does the work, declares victory, and the branch sits on your laptop. You find it three days later. supabuild's build mode only counts a build done after `gh pr create` returns a URL, and prints that URL back to you.
 
-**It loses the screenshots in your ticket.** You paste a Linear ticket with three reference images and watch Claude ignore them, because `uploads.linear.app` URLs are auth-gated and the agent can't render them. `/supabuild linear` downloads them with your token first, drops them where the build team can vision them, and only then starts work. `/supabuild github` does the same for `user-attachments` URLs.
+**It loses the screenshots in your ticket.** You paste a Linear ticket with three reference images and watch Claude ignore them, because `uploads.linear.app` URLs are auth-gated and the agent can't render them. `/supabuild linear` downloads them with your token first, drops them where the build team can vision them, and only then starts work. `/supabuild github` hydrates `user-attachments` URLs the same way (those are public, but the build still wants them on disk).
 
 **It mutates your working tree.** Two parallel runs, two half-done branches, one dirty index. Every supabuild run happens in a fresh `git worktree` in a sibling directory, on a branch named for the task. After the PR opens, the worktree is removed.
 
@@ -44,7 +44,7 @@ The answer to "I wanted options, not a single take". Builds N divergent variants
 ```
 /supabuild linear
 ```
-The answer to "the ticket has a description, screenshots, and a stakeholder watching it". Pulls every ticket in `Todo`, hydrates description images locally, runs each through the build flow, opens one PR per ticket, and comments every state move back to the ticket so a non-developer can follow along without your terminal.
+The answer to "the ticket has a description, screenshots, and a stakeholder watching it". Pulls every ticket in `Todo`, hydrates description images locally, runs each through the build flow, opens one PR per ticket. Every state move is also posted back to the ticket as a comment, so a non-developer can follow along without your terminal.
 
 ```
 /supabuild github
