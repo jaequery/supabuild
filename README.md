@@ -1,10 +1,11 @@
 # supabuild
 
-A `/supabuild` slash command for Claude Code. The default is a multi-agent build pipeline; three keywords switch into other modes:
+A `/supabuild` slash command for Claude Code. The default is a multi-agent build pipeline; four keywords switch into other modes:
 
 - `/supabuild <task>` — plan → multi-agent build → security audit → QA gate loop, in an isolated git worktree (default)
 - `/supabuild design <task>` — generates N parallel UI design variants
 - `/supabuild linear` — burns down a Linear "Todo" queue, one PR per ticket
+- `/supabuild github` — same backlog burndown, but over a GitHub Projects v2 board (auto-creates the project on first run)
 - `/supabuild worktree <task>` — thin `git worktree` wrapper
 
 ## Install
@@ -14,7 +15,7 @@ claude plugin marketplace add jaequery/supabuild
 claude plugin install supabuild@supabuild
 ```
 
-For `linear` mode you'll also need [`@schpet/linear-cli`](https://github.com/schpet/linear-cli) and [`gh`](https://cli.github.com). The skill detects missing CLIs or auth on first run and walks you through setup.
+[`gh`](https://cli.github.com) is needed for any mode that opens a PR. `linear` mode also needs [`@schpet/linear-cli`](https://github.com/schpet/linear-cli). `github` mode needs `gh` with the `project` scope (run `gh auth refresh -s project,read:project` once). The skill detects missing CLIs or auth on first run and walks you through setup.
 
 ## Usage
 
@@ -41,6 +42,18 @@ Pulls every Linear ticket in `Todo`, runs each through `build` mode, opens one P
 ```
 
 Creates a `Todo` ticket from your sentence first, then includes it in the run.
+
+```
+/supabuild github
+```
+
+Same idea, but over a GitHub Projects v2 board. On first run in a repo, it creates a `Build Queue` project with a Status field (Todo / In Progress / In Review / Done) and the four labels supabuild uses, then drains every issue in `Todo`. Each one gets its own PR; status moves and verdicts are posted as issue comments.
+
+```
+/supabuild github fix the invoice rounding bug on the billing page
+```
+
+Creates a GitHub issue, drops it in `Todo`, then includes it in the run.
 
 ```
 /supabuild worktree experiment with a different rate limiter
@@ -70,7 +83,7 @@ So you can follow a run from the Linear ticket without opening a terminal.
 ## Caveats
 
 - Runs locally in your Claude Code session. No daemon, no cloud. Close the session and the run stops.
-- `linear` mode is Linear-specific. The other three modes work without Linear.
+- `linear` mode requires Linear; `github` mode requires a GitHub repo. The default build, `design`, and `worktree` modes need neither.
 - Output is plain git branches and PRs. If a build goes sideways, check out the branch and finish by hand.
 
 ## License
