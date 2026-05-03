@@ -221,12 +221,24 @@ idempotently — re-running on a configured repo is a no-op.
 6. **Print resolved setup** so the user audits before processing:
    ```
    ## /supabuild github — setup ready
-   Repo:    $REPO_FULL
-   Project: #$PROJECT_NUM ($PROJECT_TITLE)
-   URL:     <project URL from step 2 / 3>
-   Status:  Todo / In Progress / In Review / Done
-   Labels:  Building, Testing, Choose Design, design-selected
+   Repo:     $REPO_FULL
+   Project:  #$PROJECT_NUM ($PROJECT_TITLE)
+   URL:      <project URL from step 2 / 3>
+   Status:   Todo / In Progress / In Review / Done
+   Labels:   Building, Testing, Choose Design, design-selected
+   Workflow: Each shipped PR includes `Closes #N`, so merging it
+             auto-closes the issue. Projects v2 enables the
+             "Auto-close issue → Done" workflow by default for
+             projects created after April 2024 — closing the issue
+             then moves the item to Done. If your project predates
+             that and items aren't moving to Done, enable it once at
+             <project URL>/workflows.
    ```
+
+   GitHub does not expose an enable/disable mutation for this workflow
+   in their public GraphQL — that's why the toggle stays a one-time
+   manual step for legacy projects. New projects supabuild creates need
+   no manual setup.
 
 ### E.1. Preflight
 
@@ -530,6 +542,25 @@ left out of v1 to keep the dependency footprint small.)
 
 On §A APPROVED + PR opened:
 ```bash
+# Ensure the PR body contains a closing keyword for this issue. Without
+# this, merging the PR does not close the issue, so the project's
+# "Auto-close issue → Done" workflow has no event to react to and the
+# item is stuck in "In Review" forever. Idempotent: only prepends if no
+# closing keyword for this issue is already present (in case the build
+# agent or a human added one). Non-fatal on failure — manual fix is one
+# `gh pr edit` away.
+PR_NUMBER="${PR_URL##*/}"
+PR_BODY_CUR=$(gh pr view "$PR_NUMBER" --repo "$REPO_FULL" --json body -q '.body // ""')
+if ! printf '%s' "$PR_BODY_CUR" \
+     | grep -qiE "(closes|fixes|resolves)[[:space:]]+#${ISSUE_NUM}([^0-9]|$)"; then
+  printf 'Closes #%s\n\n%s' "$ISSUE_NUM" "$PR_BODY_CUR" \
+    > "/tmp/sgh-pr-close-$$.md"
+  gh pr edit "$PR_NUMBER" --repo "$REPO_FULL" \
+    --body-file "/tmp/sgh-pr-close-$$.md" \
+    || echo "warn: failed to add Closes #$ISSUE_NUM to PR body (continuing)"
+  rm -f "/tmp/sgh-pr-close-$$.md"
+fi
+
 # Final state move
 gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" \
   --field-id "$STATUS_FIELD_ID" --single-select-option-id "$REVIEW_OPT_ID"
@@ -538,7 +569,9 @@ gh issue comment "$ISSUE_NUM" --repo "$REPO_FULL" --body-file <(cat <<EOF
 ### 🔗 PR opened
 $PR_URL
 
-State: In Progress → In Review.
+State: In Progress → In Review. Merging the PR will auto-close this
+issue (\`Closes #$ISSUE_NUM\` is in the PR body) and the project's
+\`Auto-close issue\` workflow will move it to **Done**.
 EOF
 )
 ```
