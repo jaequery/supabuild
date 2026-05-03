@@ -1,7 +1,7 @@
 ---
 name: supabuild
 description: >
-  Multi-mode team-led build / design / Linear-burndown / worktree skill.
+  Multi-mode build / design / Linear-burndown / worktree skill.
   Parses the first whitespace-delimited token of $ARGUMENTS as a mode:
   `build` runs a Team Lead orchestrator (plan → 2–10 specialist subagents
   → security audit → QA + code review, looping until clean) in an isolated
@@ -10,67 +10,65 @@ description: >
   its own worktree, critiqued by a world-class Design Lead; `linear` burns
   down a Linear "Todo" queue, one clean PR per ticket, narrating every
   state/label transition back into Linear; `worktree` is the thin
-  `git worktree` wrapper used as a building block. Use when the user says
-  "/supabuild", "/supabuild build ...", "/supabuild design ...",
-  "/supabuild linear", "/supabuild worktree ...", "team build", "team-build",
-  "ceo build", "chief executive build", "build with a chief and team",
-  "build this with a chief and team", "run this as a chief-led build",
-  "multi-agent build", "build with QA gate", "team design", "team-design",
-  "design variants", "give me design options", "show me variants",
-  "explore directions", "I want to pick from a few looks", "linear team
-  build", "linear-team-build", "burn down my linear todos", "burn down
-  linear", "ship every linear todo", "team-build every linear todo",
-  "worktree task", "do X in a worktree", "run this in an isolated branch",
+  `git worktree` wrapper used as a building block. Use when the user
+  says "/supabuild", "/supabuild build ...", "/supabuild design ...",
+  "/supabuild linear", "/supabuild worktree ...", "ceo build", "chief
+  executive build", "build with a chief and team", "build this with a
+  chief and team", "run this as a chief-led build", "multi-agent build",
+  "build with QA gate", "design variants", "give me design options",
+  "show me variants", "explore directions", "I want to pick from a few
+  looks", "burn down my linear todos", "burn down linear", "ship every
+  linear todo", "do X in a worktree", "run this in an isolated branch",
   "spin up a worktree for Z", "isolated branch", or otherwise wants a
   multi-agent build, parallel design exploration, autonomous Linear
   backlog burndown, or a side-branch workspace that won't disturb the
   current checkout. Mode-routing is explicit: the first token of
   $ARGUMENTS picks §A (build) / §B (design) / §C (linear) / §D
-  (worktree); legacy phrase invocations route to the same sections.
+  (worktree); natural-language phrase invocations route to the same
+  sections.
 ---
 
-# /supabuild — Team-Led Multi-Agent Build / Design / Linear-Burndown / Worktree
+# /supabuild — Multi-Agent Build / Design / Linear-Burndown / Worktree
 
-This skill consolidates four previously-separate flows — `team-build`,
-`team-design`, `linear-team-build`, and `worktree-task` — into one
-mode-routed entry point. Every behavioral rule from the source skills
-is preserved verbatim below; cross-skill references that previously
-went to sibling skills are now inline section references (`§A`/`§B`/
-`§C`/`§D`).
+`/supabuild` is one mode-routed entry point with four flows: a
+Team-Lead-orchestrated multi-agent build (§A), parallel
+design-variant exploration (§B), autonomous Linear backlog
+burndown (§C), and a thin git-worktree wrapper (§D). The first
+whitespace-delimited token of `$ARGUMENTS` selects the flow;
+sections cross-reference each other via the `§A`/`§B`/`§C`/`§D`
+letter prefix.
 
 ## Mode routing
 
 Parse `$ARGUMENTS`. Take the first whitespace-delimited token
 (lowercased) as the mode:
 
-- `build` → §A (team-build flow). Remainder of args = task description.
-- `design` → §B (team-design flow). Remainder of args = task description.
-- `linear` → §C (linear-team-build flow). Remainder of args = optional
+- `build` → §A (build flow). Remainder of args = task description.
+- `design` → §B (design flow). Remainder of args = task description.
+- `linear` → §C (linear flow). Remainder of args = optional
   team/assignee filter / flags.
-- `worktree` → §D (worktree-task flow). Remainder of args = task
+- `worktree` → §D (worktree flow). Remainder of args = task
   description.
 
 If the first token is none of the above (or if `$ARGUMENTS` is empty),
 treat the entire `$ARGUMENTS` string as a freeform task description and
 default to §A.
 
-When the user invokes via the legacy phrase forms ("team build", "team
-design", "linear team build", "burn down linear", "worktree task",
-etc.), route to the corresponding section as if the mode had been
-passed explicitly. Specifically:
+When the user invokes via the natural-language phrase forms ("ceo
+build", "build with a chief and team", "give me design options",
+"burn down linear", "do X in a worktree", etc.), route to the
+corresponding section as if the mode had been passed explicitly.
+Specifically:
 
-- "team build", "team-build", "ceo build", "chief executive build",
-  "build with a chief and team", "run this as a chief-led build",
+- "ceo build", "chief executive build", "build with a chief and team",
+  "build this with a chief and team", "run this as a chief-led build",
   "multi-agent build", "build with QA gate" → §A.
-- "team design", "team-design", "design variants", "give me design
-  options", "show me variants", "explore directions", "I want to pick
-  from a few looks" → §B.
-- "linear team build", "linear-team-build", "burn down my linear
-  todos", "burn down linear", "ship every linear todo", "team-build
-  every linear todo" → §C.
-- "worktree task", "worktree-task", "do X in a worktree", "run this
-  in an isolated branch", "spin up a worktree for Z", "isolated
-  branch" → §D.
+- "design variants", "give me design options", "show me variants",
+  "explore directions", "I want to pick from a few looks" → §B.
+- "burn down my linear todos", "burn down linear", "ship every linear
+  todo" → §C.
+- "do X in a worktree", "run this in an isolated branch", "spin up a
+  worktree for Z", "isolated branch" → §D.
 
 The four sections below are self-contained — every internal cross-
 reference within a section uses the section letter as a prefix
@@ -80,7 +78,7 @@ loop).
 
 ---
 
-## §A — `build` (team-build mode)
+## §A — `build`
 
 You are the **Team Lead** of this build. You own the outcome. You plan,
 delegate, review, and decide when the work ships. You do NOT write the
@@ -93,15 +91,14 @@ not meet the bar.
 
 ### A.0. Inputs
 
-The user invokes `/supabuild build <task description>` (or the legacy
-`/team-build <task description>`). They may also pass:
+The user invokes `/supabuild build <task description>`. They may also pass:
 
 - A **target branch** (e.g. `--branch feature/foo` or "push to `develop`").
   If provided, the final approved work is pushed there and a PR is opened.
 - A **working branch** (e.g. `--working-branch jaequery/pin-56-fix-foo`).
-  If provided, this overrides the auto-generated `team-build/$SLUG-$TS`
-  branch name. Used by §C (linear-team-build flow) to honor Linear's
-  suggested branch name (`issue.branchName`). The `team-build/` prefix
+  If provided, this overrides the auto-generated `supabuild/$SLUG-$TS`
+  branch name. Used by §C (linear flow) to honor Linear's
+  suggested branch name (`issue.branchName`). The `supabuild/` prefix
   is **not** applied; use the name verbatim.
 - If no target branch is provided, the worktree + branch is left in place
   and the user is offered the standard cleanup menu (see §A.6).
@@ -148,7 +145,7 @@ Run a discovery pass:
    proceed without further confirmation.
 
 Skip the discovery pass when:
-- The skill was invoked by §C (the linear-team-build flow inside
+- The skill was invoked by §C (the linear flow inside
   this same skill) whose prompt already contains a fully-formed
   brief — the upstream flow owns scoping. Detect this by the prompt
   explicitly stating "[Linear …]" / "do not ask clarifying questions"
@@ -173,9 +170,9 @@ Compute:
 - `$SLUG` — 2–4 kebab-case words from the task (`^[a-z0-9][a-z0-9-]{0,39}$`).
 - `$TS` — `date +%Y%m%d-%H%M%S`.
 - `$BRANCH` — user-supplied `--working-branch <name>` if present
-  (used verbatim, no prefix added); otherwise `team-build/$SLUG-$TS`.
-- `$WT_PATH` — `$(dirname $REPO_ROOT)/$REPO_NAME.team-build-$SLUG-$TS`
-  (the worktree path keeps the `team-build-` prefix even when
+  (used verbatim, no prefix added); otherwise `supabuild/$SLUG-$TS`.
+- `$WT_PATH` — `$(dirname $REPO_ROOT)/$REPO_NAME.supabuild-$SLUG-$TS`
+  (the worktree path keeps the `supabuild-` prefix even when
   `--working-branch` overrides `$BRANCH`, so cleanup heuristics still
   match).
 - `$BASE_BRANCH` — current branch, or `main`/`master` if detached.
@@ -632,7 +629,7 @@ the QA agent's job is to render a verdict, not to run shell scripts.
 **Step 3 — APPROVED precondition (hard gate).**
 
 When `$UI_DIFF` is non-empty, the Team Lead **CANNOT** output APPROVED
-unless `$WT_PATH/.team-build/evidence/00-walkthrough.{webm,mp4}` exists
+unless `$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}` exists
 on disk and is ≥50KB. No exceptions, no waivers, no "I checked it
 manually". If the file is missing or undersized:
 - Re-run the §A.5a capture script inline once more with verbose logging.
@@ -653,9 +650,9 @@ When `$UI_DIFF` from §A.5 is non-empty, the **Team Lead executes this
 script inline** (do not delegate to the QA agent — its dispatch prompt
 won't carry the script verbatim, and past runs have silently skipped
 capture as a result). The artifact at
-`$WT_PATH/.team-build/evidence/00-walkthrough.{webm,mp4}` is a hard
+`$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}` is a hard
 APPROVED precondition per §A.5 step 3. This replaces the post-APPROVED
-§C.3d.5 boot in the linear-team-build flow and the §A.5.5 still-only
+§C.3d.5 boot in the linear flow and the §A.5.5 still-only
 flow.
 
 **Capture is `playwright-cli` against a live dev server.** Language-
@@ -674,7 +671,7 @@ command -v playwright-cli >/dev/null 2>&1 || npm i -g @playwright/cli
 
 **Capture-script resolution order** (first that exists wins):
 
-1. `$WT_PATH/.team-build/capture.sh` — repo-owned hook (highest
+1. `$WT_PATH/.supabuild/capture.sh` — repo-owned hook (highest
    priority). Receives env vars `WALK_OUT` (= `$EVID`) and `WALK_URL`
    and is responsible for the entire boot → record → teardown cycle.
    Use this when the repo has custom auth, migrations, or preview-URL
@@ -682,7 +679,7 @@ command -v playwright-cli >/dev/null 2>&1 || npm i -g @playwright/cli
    leave `$WALK_OUT/00-walkthrough.{webm,mp4}` on disk; everything
    else is optional.
 
-2. `package.json` field `team-build.capture` — same contract as the
+2. `package.json` field `supabuild.capture` — same contract as the
    hook.
 
 3. **Default: `playwright-cli` walkthrough.** Boot the dev server per
@@ -718,8 +715,8 @@ scroll-and-screenshot tour at the bottom of the script — at minimum
 that proves the page renders.
 
 ```bash
-SESS="tb-$$"
-EVID="$WT_PATH/.team-build/evidence"
+SESS="sb-$$"
+EVID="$WT_PATH/.supabuild/evidence"
 mkdir -p "$EVID"
 
 playwright-cli -s="$SESS" open "$URL"
@@ -815,7 +812,7 @@ walkthrough remains the primary verification.**
   - If the diff is genuinely UI-bearing, capture failure = NEEDS
     ANOTHER ROUND (or ESCALATED if the failure is structural, e.g.
     no detectable boot command, or auth-walled app with no
-    `.team-build/capture.sh`).
+    `.supabuild/capture.sh`).
   - If the diff is UI-adjacent but verifiable another way (Storybook,
     snapshot, terminal transcript), Team Lead may waive and proceed.
 - Optional test-bonus failures are surfaced but **do not gate
@@ -842,7 +839,7 @@ Don't burn tokens grinding past a structural problem — escalate.
 ### A.5.5 Visual evidence (verify on disk — do NOT commit)
 
 For UI work, the walkthrough video and stills already exist under
-`$WT_PATH/.team-build/evidence/` from §A.5a (captured during QA, not
+`$WT_PATH/.supabuild/evidence/` from §A.5a (captured during QA, not
 after). **Evidence artifacts are NOT committed to the repo.** They
 are uploaded to Linear / posted as a GitHub PR comment by the
 orchestrator (e.g. §C.3d.5), so committing them would only bloat
@@ -853,11 +850,11 @@ upload — no `git add`, no `git commit`.
 
 - **UI work** — confirm `00-walkthrough.webm` (or `.mp4`, or the
   `0[1-3]-step.png` still set) exists under
-  `$WT_PATH/.team-build/evidence/`. Record the filenames in the §A.6
+  `$WT_PATH/.supabuild/evidence/`. Record the filenames in the §A.6
   final report so the orchestrator (or the user, in standalone mode)
   knows what to upload.
 - **CLI / backend / infra** — capture a terminal transcript instead.
-  Save it to `$WT_PATH/.team-build/evidence/evidence-<step>.txt`.
+  Save it to `$WT_PATH/.supabuild/evidence/evidence-<step>.txt`.
   Same rule: do not commit; the orchestrator uploads or links it.
 - **Pure refactor with no observable surface** — skip this section
   entirely and note "no visual surface" in the §A.6 final report.
@@ -904,7 +901,7 @@ Then choose the ship path based on `$TARGET_BRANCH`:
 #### A.6a. `$TARGET_BRANCH` was provided — push and open PR
 
 **Do NOT append a `## Visual evidence` section that links into
-`.team-build/evidence/...`.** Evidence is not committed (per §A.5.5),
+`.supabuild/evidence/...`.** Evidence is not committed (per §A.5.5),
 so relative-path image links would 404 on GitHub. Instead, append a
 short **`## Walkthrough`** section that names the local artifacts:
 
@@ -967,10 +964,10 @@ for uploading the actual files to Linear / a PR comment.
    Otherwise, clean up now:
    ```
    # Evidence is no longer committed (per §A.5.5), so nothing under
-   # $WT_PATH/.team-build/evidence/ lives on origin. The whole tree is
+   # $WT_PATH/.supabuild/evidence/ lives on origin. The whole tree is
    # ephemeral — sweep it before `worktree remove`, since the dir is
    # untracked and would block removal.
-   rm -rf "$WT_PATH/.team-build/evidence" 2>/dev/null
+   rm -rf "$WT_PATH/.supabuild/evidence" 2>/dev/null
    git -C "$REPO_ROOT" worktree remove "$WT_PATH"
    git -C "$REPO_ROOT" branch -d "$BRANCH"   # safe delete; skip if it fails (unmerged)
    ```
@@ -1003,7 +1000,7 @@ for uploading the actual files to Linear / a PR comment.
 #### A.6b. No target branch — hand back the worktree
 
 Print `$WT_PATH` and `$BRANCH` and offer the standard 6-option menu
-from §D (the worktree-task flow):
+from §D (the worktree flow):
 
 ```
 (a) keep worktree as-is
@@ -1043,7 +1040,7 @@ Repair is the user's call; this skill does not auto-heal.
   passing. "I think it works" is not approval.
 - Loop cap is 3 rounds. After that, escalate to the user.
 - All file writes go under `$WT_PATH`. Never edit the main working tree
-  during a team-build run.
+  during a build run.
 - Never `--no-verify`, never bypass signing, never skip hooks unless the
   user explicitly asks.
 - Push only after the typed-`yes` gate. PRs only after the push succeeds.
@@ -1054,7 +1051,7 @@ Repair is the user's call; this skill does not auto-heal.
 
 ---
 
-## §B — `design` (team-design mode)
+## §B — `design`
 
 You are the **Design Lead**. Not a junior. Not a generalist. You are
 the kind of designer whose work appears in Awwwards SOTD, FWA, the
@@ -1076,8 +1073,7 @@ mid, you say so and send it back.
 
 ### B.0. Inputs
 
-`/supabuild design <task description> [flags]` (or the legacy
-`/team-design <task description>`).
+`/supabuild design <task description> [flags]`.
 
 - `--variants N` — number of variants to produce. Default `4`.
   Min `2`, max `10`. Above 6, the Lead is required to defend why so
@@ -1087,8 +1083,8 @@ mid, you say so and send it back.
   Lead opens one PR per variant against this branch after the user
   picks (or against all on request). Default: no PRs, leave the
   branches and worktrees in place for the user to pick.
-- `--branch-prefix <prefix>` — override the default `team-design`
-  prefix. Used verbatim. Default: `team-design/<slug>-<variant>`.
+- `--branch-prefix <prefix>` — override the default `supabuild-design`
+  prefix. Used verbatim. Default: `supabuild-design/<slug>-<variant>`.
 - `--reference <url|path>` — one or more references the Lead must
   consider (a Figma file, a Dribbble link, a competitor URL, a
   brand guideline doc). Repeatable.
@@ -1147,9 +1143,9 @@ Compute (once, shared):
 - `$BASE_SHA` — `git rev-parse HEAD`.
 
 Per variant `V`:
-- `$BRANCH_V` — `${PREFIX:-team-design}/$SLUG-$V` (e.g.
-  `team-design/landing-brutalist`).
-- `$WT_V` — `$(dirname $REPO_ROOT)/$REPO_NAME.team-design-$SLUG-$V-$TS`.
+- `$BRANCH_V` — `${PREFIX:-supabuild-design}/$SLUG-$V` (e.g.
+  `supabuild-design/landing-brutalist`).
+- `$WT_V` — `$(dirname $REPO_ROOT)/$REPO_NAME.supabuild-design-$SLUG-$V-$TS`.
 
 Preflight (once):
 1. `git rev-parse --is-inside-work-tree` → must be `true`.
@@ -1161,8 +1157,8 @@ Preflight (once):
 Create all worktrees:
 ```
 for V in "${VARIANTS[@]}"; do
-  git worktree add -b "team-design/$SLUG-$V" \
-    "$(dirname $REPO_ROOT)/$REPO_NAME.team-design-$SLUG-$V-$TS" \
+  git worktree add -b "supabuild-design/$SLUG-$V" \
+    "$(dirname $REPO_ROOT)/$REPO_NAME.supabuild-design-$SLUG-$V-$TS" \
     "$BASE_SHA"
 done
 ```
@@ -1171,8 +1167,8 @@ Print the table:
 ```
 | Variant            | Branch                              | Worktree                                  |
 |--------------------|-------------------------------------|-------------------------------------------|
-| brutalist          | team-design/landing-brutalist       | ../<repo>.team-design-landing-brutalist-… |
-| editorial-serif    | team-design/landing-editorial-serif | …                                         |
+| brutalist          | supabuild-design/landing-brutalist       | ../<repo>.supabuild-design-landing-brutalist-… |
+| editorial-serif    | supabuild-design/landing-editorial-serif | …                                         |
 ```
 
 From now on, **all** Read/Edit/Write per variant uses absolute paths
@@ -1280,14 +1276,14 @@ For each variant capture, at minimum:
 - Same at mobile (390 wide).
 - One interactive state (hover/focus/open menu/scrolled past hero).
 
-Save under `$WT_V/.team-design/shots/`:
+Save under `$WT_V/.supabuild-design/shots/`:
 ```
 01-hero-desktop.png
 02-hero-mobile.png
 03-state-<name>.png
 ```
 
-Commit them: `docs(team-design): capture <variant> shots`. They live
+Commit them: `docs(supabuild-design): capture <variant> shots`. They live
 on the variant's branch so the user (and any later PR) renders them
 inline.
 
@@ -1335,12 +1331,12 @@ HTML gallery so the user can **see** the variants instead of reading
 about them. This is the primary picker; the terminal actions in §B.7
 are the keyboard fallback.
 
-Write to `$REPO_ROOT/.team-design/gallery-$SLUG-$TS/index.html` (the
-`.team-design/` dir at the repo root, not inside any worktree — it
+Write to `$REPO_ROOT/.supabuild-design/gallery-$SLUG-$TS/index.html` (the
+`.supabuild-design/` dir at the repo root, not inside any worktree — it
 lives outside the variant branches so the gallery itself doesn't
 pollute any one variant). Copy each variant's screenshots from
-`$WT_V/.team-design/shots/*.png` into
-`$REPO_ROOT/.team-design/gallery-$SLUG-$TS/<variant>/` so the HTML
+`$WT_V/.supabuild-design/shots/*.png` into
+`$REPO_ROOT/.supabuild-design/gallery-$SLUG-$TS/<variant>/` so the HTML
 loads them via relative paths and survives worktree cleanup.
 
 The page must contain, per variant, in lineup order:
@@ -1355,7 +1351,7 @@ The page must contain, per variant, in lineup order:
 - Branch name + worktree path as copy-to-clipboard chips.
 - Three action buttons per variant: **Pick this**, **Request redo**,
   **Kill**. Each writes a single line to
-  `$REPO_ROOT/.team-design/gallery-$SLUG-$TS/picks.jsonl` via a
+  `$REPO_ROOT/.supabuild-design/gallery-$SLUG-$TS/picks.jsonl` via a
   `fetch('/pick', …)` call to a tiny localhost server (see below);
   if the server isn't running the buttons fall back to a
   `navigator.clipboard.writeText()` of the equivalent terminal
@@ -1372,7 +1368,7 @@ and accept pick events. Use Python's stdlib (always available on
 darwin and most linux dev boxes):
 
 ```
-cd "$REPO_ROOT/.team-design/gallery-$SLUG-$TS"
+cd "$REPO_ROOT/.supabuild-design/gallery-$SLUG-$TS"
 python3 -m http.server 0 >/dev/null 2>&1 &
 GALLERY_PID=$!
 # capture the actual port from the server's stderr or by writing
@@ -1421,8 +1417,8 @@ Base: $BASE_BRANCH @ $BASE_SHA   N: <N_pass>/<N_total>
 
 | #  | Variant            | Verdict | Branch                        | Worktree                | Hero shot                             |
 |----|--------------------|---------|-------------------------------|-------------------------|---------------------------------------|
-| 1  | brutalist          | PASS    | team-design/landing-brutalist | ../<repo>.team-design-… | $WT/.team-design/shots/01-hero-desktop.png |
-| 2  | editorial-serif    | PASS    | team-design/landing-editorial | ../…                    | …                                     |
+| 1  | brutalist          | PASS    | supabuild-design/landing-brutalist | ../<repo>.supabuild-design-… | $WT/.supabuild-design/shots/01-hero-desktop.png |
+| 2  | editorial-serif    | PASS    | supabuild-design/landing-editorial | ../…                    | …                                     |
 | 3  | playful-collage    | KILLED  | (none)                        | (cleaned up)            | (n/a)                                 |
 ```
 
@@ -1431,7 +1427,7 @@ Then offer the user the **picker actions**:
 ```
 (g)allery         — reopen the visual gallery (§B.6.5) in browser
 (p)review <#>     — open the variant's hero/mobile shots inline
-(d)iff   <#>      — show git diff $BASE_SHA..team-design/<slug>-<v>
+(d)iff   <#>      — show git diff $BASE_SHA..supabuild-design/<slug>-<v>
 (o)pen   <#>      — print `cd $WT_V` and the dev-server start command
 (s)hip   <#>      — push that branch, open a PR against $TARGET_BRANCH (if set)
 (k)ill   <#>      — drop a variant: remove worktree, delete branch, drop DB if §B.2.5
@@ -1462,7 +1458,7 @@ one PR per variant — and report URLs back.
 - **Never auto-replace a KILLED variant with a new one mid-flight.**
   The user picks from the originally-briefed lineup, with kills
   marked. New directions = new `/supabuild design` run.
-- **Branches follow `team-design/<slug>-<variant>` exactly.** No
+- **Branches follow `supabuild-design/<slug>-<variant>` exactly.** No
   numeric suffixes for "v2", no timestamps in the branch name. The
   variant slug carries the identity.
 - **Loop cap: 2 redos per variant.** After that the variant is
@@ -1477,17 +1473,16 @@ one PR per variant — and report URLs back.
 
 ---
 
-## §C — `linear` (linear-team-build mode)
+## §C — `linear`
 
 You are a backlog runner. For every open Linear ticket in **Todo** status,
-you launch the §A team-build flow against that ticket's description and
+you launch the §A build flow against that ticket's description and
 ship a **separate PR** per ticket. Never bundle multiple tickets into one
 PR. Every build must meet the clean-code bar in §C.3a.
 
 ### C.0. Inputs
 
-`/supabuild linear [task description] [flags]` (or the legacy
-`/linear-team-build [task description] [flags]`).
+`/supabuild linear [task description] [flags]`.
 
 **Positional arg (optional).** If a free-form task description is
 passed, **create the ticket on the fly first** (in Todo state, on
@@ -1564,8 +1559,8 @@ hatch) if a needed field is not exposed by a structured subcommand.
    and confirmed by the user.
 4. **`gh` available.** `gh auth status` must succeed — the §A flow
    needs it for PR creation.
-5. **§A reachable.** This skill invokes the team-build flow inline
-   (the consolidated skill IS team-build, so it just runs its own §A);
+5. **§A reachable.** This skill invokes the build flow inline
+   (this skill owns the build flow, so it just runs its own §A);
    confirm that the §A section is loaded in this skill before
    proceeding.
 6. **Capture run-level state once** (so per-ticket loops don't
@@ -1705,7 +1700,7 @@ are three possible outcomes per ticket; pick the first that matches:
    moving parts, more failure modes.
 
 3. **BUILD** — everything else. Proceed to §C.3a-pre and run the
-   normal §A team-build path through §C.3f.
+   normal §A build path through §C.3f.
 
 UI heuristic for path 2 (any one fires):
 - Label match: `^(ui|ux|design|frontend|web|mobile|needs-design)$`
@@ -1809,7 +1804,7 @@ one before silence.
 ```
 
 This is the FIRST comment on every active ticket, even before the
-phase-specific "design exploration started" / "team-build started"
+phase-specific "design exploration started" / "build started"
 comments. The phase comments still post — this one is additive,
 not a replacement. AWAITING_HUMAN never gets this comment (it's
 the only carve-out from the "narrate everything" rule).
@@ -1863,13 +1858,13 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
    - The design flow is producing N divergent variants in parallel.
    - Each variant will land as its own comment on this ticket
      with screenshots and a per-variant git branch
-     (`team-design/<slug>-<variant>`).
+     (`supabuild-design/<slug>-<variant>`).
    - When done, I'll move this ticket back to **Todo** with the
      **`Choose Design`** label. Pick a variant by leaving a
      comment, then add the **`design-selected`** label (or just
      remove `Choose Design`) and re-run `/supabuild linear` —
      the next run will skip design and go straight to the §A
-     team-build flow with the chosen direction in context.
+     build flow with the chosen direction in context.
    ```
 3. **Hydrate description images first**, then **invoke the §B
    design flow** (Linear-aware variant — attach to the existing
@@ -1922,7 +1917,7 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
 
      The §B design flow finished. Each variant is a comment above
      this one with screenshots and a per-variant git branch
-     (`team-design/<slug>-<variant>`) you can check out locally
+     (`supabuild-design/<slug>-<variant>`) you can check out locally
      to compare.
 
      **To proceed:**
@@ -1931,7 +1926,7 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
         the **`Choose Design`** label (either signals "pick
         recorded" — both work).
      3. Re-run `/supabuild linear` — this ticket will route
-        straight to the §A team-build flow and the build team
+        straight to the §A build flow and the build team
         will see the chosen direction in the comment history
         above.
 
@@ -1940,7 +1935,7 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
      the design flow — leave it attached.
      ```
 5. Record verdict `DESIGN_HANDOFF` in the results table. Note the
-   per-variant `team-design/...` branches in the row's "Next step"
+   per-variant `supabuild-design/...` branches in the row's "Next step"
    cell so they appear in §C.5's summary. Continue to the next
    ticket. Do NOT run §C.3a-pre…§C.3f for this ticket.
 
@@ -1972,8 +1967,8 @@ Two distinct branches matter per ticket:
   jq -r '.branchName // empty' "$LTB_CACHE_DIR/issue-$IDENT.json"
   ```
   If `branchName` is missing or empty, fall back to letting the §A
-  flow generate its default `team-build/<slug>-<ts>`. **Never** prepend
-  `team-build/` to Linear's suggested name — pass it verbatim through
+  flow generate its default `supabuild/<slug>-<ts>`. **Never** prepend
+  `supabuild/` to Linear's suggested name — pass it verbatim through
   `--working-branch`.
 
   **Poisoned-branch case.** If Linear's suggested `branchName` already
@@ -1993,8 +1988,8 @@ Two distinct branches matter per ticket:
   unusable and **fall back to §A's auto-generated default** (omit
   `--working-branch` from the dispatch). The closed PR's branch
   stays untouched; the new attempt gets a clean
-  `team-build/<slug>-<ts>` branch. Note the fallback explicitly in
-  the §C.3b "team-build started" comment so the human sees why the
+  `supabuild/<slug>-<ts>` branch. Note the fallback explicitly in
+  the §C.3b "build started" comment so the human sees why the
   branch isn't following the Linear-suggested pattern.
 - **`$RESOLVED`** — the PR base / target branch (where the PR merges
   into). Resolve in the order below; first match wins.
@@ -2020,7 +2015,7 @@ git show-ref --verify --quiet "refs/heads/$RESOLVED" \
 
 If neither, **STOP this ticket** (do not silently fall back to `main`):
 - Comment on the Linear ticket via
-  `linear issue comment add $IDENT --body "team-build skipped: target branch \`$RESOLVED\` does not exist locally or on origin."`
+  `linear issue comment add $IDENT --body "build skipped: target branch \`$RESOLVED\` does not exist locally or on origin."`
 - Move the ticket back to **Todo** via
   `linear issue update $IDENT --state Todo`.
 - Record verdict `SKIPPED` in the results table and continue to the
@@ -2119,7 +2114,7 @@ If $N is 0, skip the comment (and skip §C.3a-img entirely).
 Pass the resulting `IMAGES_BLOCK` into the §C.3a prompt body — see the
 `Reference images` section in the template.
 
-#### C.3a. Build the team-build invocation
+#### C.3a. Build the build invocation
 
 Hand the §A flow exactly this prompt body (one ticket only):
 
@@ -2173,7 +2168,7 @@ Push policy for this run (non-negotiable):
   execute the §A.5a capture script inline (`playwright-cli` walkthrough
   against the booted dev server) for any UI-bearing diff. Leave the
   resulting
-  `$WT_PATH/.team-build/evidence/` directory **on disk — do NOT
+  `$WT_PATH/.supabuild/evidence/` directory **on disk — do NOT
   commit it.** The §C.3d.5 step reads it directly off the worktree
   and uploads to Linear; committing pollutes `Files changed` with
   QA artifacts that have no business in VCS. If capture fails (no
@@ -2196,7 +2191,7 @@ Push policy for this run (non-negotiable):
   the agent rationalized around the regex; reviewer had no visual
   proof. If the regex matches, capture. The only acceptable "not
   captured" reasons are infrastructural failures (no E2E config AND
-  synthetic boot failed AND repo `.team-build/capture.sh` absent) —
+  synthetic boot failed AND repo `.supabuild/capture.sh` absent) —
   and those must include the specific failure mode, not a self-
   judged rationale. See §A.5 step 1 for the full list of banned
   waiver phrases.
@@ -2209,7 +2204,7 @@ even when `--working-branch` overrides the branch name.
 #### C.3b. Add the `Building` label + post a "starting" comment
 
 State is already "In Progress" — §C.3-state moved it before §C.3-announce.
-This section only handles the BUILD-specific label and the "team-build
+This section only handles the BUILD-specific label and the "build
 started" status comment; do NOT re-resolve or re-issue the state
 transition here (it's redundant and could fight a human who manually
 nudged the state in the meantime).
@@ -2225,13 +2220,13 @@ Then post a status comment so non-terminal stakeholders can follow
 along. Write to a temp file and use `--body-file`:
 
 ```markdown
-### 🛠️ team-build started
+### 🛠️ build started
 
 - **Label:** `Building`
 - **Working branch:** `$WORKING_BRANCH`
 - **Target (PR base):** `$RESOLVED`
 - **Worktree slug:** `$IDENT_LOWER`
-- **Mode:** §A team-build (plan → parallel specialist build → security audit → QA + code review, looping until clean)
+- **Mode:** §A build (plan → parallel specialist build → security audit → QA + code review, looping until clean)
 - **Clean-code bar:** reuse existing patterns, minimal diff, no dead code/TODOs/console.logs.
 
 Next stops: `Testing` label during QA capture, then PR open + state → `In Review`.
@@ -2244,15 +2239,15 @@ linear issue comment add "$IDENT" --body-file /tmp/ltb-start-$IDENT.md
 Comment is best-effort: if it fails, log and proceed — never block the
 build on a comment failure. Skip this comment when `--dry-run`.
 
-#### C.3c. Run the §A team-build flow inline — ONE invocation per ticket
+#### C.3c. Run the §A build flow inline — ONE invocation per ticket
 
 **This is the most-violated rule. Read carefully.**
 
-Run the §A team-build flow **exactly once** per ticket. Never batch
+Run the §A build flow **exactly once** per ticket. Never batch
 tickets into a single invocation. Never reuse a worktree across
 tickets. If your prompt to the §A flow mentions two ticket IDs, you
-are doing it wrong — stop. The consolidated skill IS the team-build
-flow, so the Team Lead executes §A inline against this single ticket's
+are doing it wrong — stop. This skill owns the build flow, so the
+Team Lead executes §A inline against this single ticket's
 brief; do not add a real Skill-tool dispatch.
 
 Snapshot PR list before:
@@ -2315,7 +2310,7 @@ ESCALATED, or FAILED.
 After it returns, verify isolation:
 - `gh pr list` must now show **exactly one** new open PR vs.
   `PRS_BEFORE` whose head ref equals `$WORKING_BRANCH` (when supplied)
-  or starts with `team-build/<ticket-slug>-` (fallback). Zero or more
+  or starts with `supabuild/<ticket-slug>-` (fallback). Zero or more
   than one new PR → STOP the loop and report.
 - The new branch and PR number must be unique across this run's
   results table.
@@ -2323,7 +2318,7 @@ After it returns, verify isolation:
 #### C.3d. Capture the outcome
 
 Record: PR URL, PR number, branch name (Linear's `branchName` when
-supplied, else the `team-build/...` default), worktree path, verdict,
+supplied, else the `supabuild/...` default), worktree path, verdict,
 rounds run. Also capture `$ISSUE_ID` (UUID) and `$TEAM_ID` (UUID) from
 `linear issue view "$IDENT" --json` — needed by §C.3d.5 for `fileUpload`.
 
@@ -2384,7 +2379,7 @@ status separately.
 **Locate or build the Playwright report zip first.**
 
 ```bash
-EVID="$WT/.team-build/evidence"
+EVID="$WT/.supabuild/evidence"
 REPORT_DIR="$EVID/playwright-report"      # default Playwright output dir
 REPORT_ZIP="$EVID/playwright-report.zip"
 ```
@@ -2433,7 +2428,7 @@ the missing-worktree branch above): tear down the worktree that
 
 ```bash
 if [ -d "$WT" ]; then
-  rm -rf "$WT/.team-build/evidence" 2>/dev/null
+  rm -rf "$WT/.supabuild/evidence" 2>/dev/null
   git -C "$REPO_ROOT" worktree remove --force "$WT"
   git -C "$REPO_ROOT" branch -d "$WORKING_BRANCH" 2>/dev/null || true
 fi
@@ -2706,7 +2701,7 @@ it in the results table. Never let the ticket land in a
 Default: **sequential** (`--parallel 1`). Tickets run one at a time so
 output stays readable and rate limits don't bite. Pass `--parallel
 <n>` to opt into concurrency — each §A run produces its own worktree
-(`team-build/...`), so they don't collide on disk. If effective
+(`supabuild/...`), so they don't collide on disk. If effective
 concurrency exceeds 5, warn the user about shared `gh`/Linear rate
 limits but do not cap — the user asked for it.
 
@@ -2745,11 +2740,11 @@ Processed: N tickets
 
 Worktrees still on disk:
 - ESCALATED/FAILED build worktrees (APPROVED are auto-cleaned by §A.6a):
-  - /path/to/repo.team-build-eng-130-...  (ENG-130, escalated)
+  - /path/to/repo.supabuild-eng-130-...  (ENG-130, escalated)
 - DESIGN_HANDOFF variant worktrees (left intentionally so the human can
   diff/check out variants before picking — clean up after the pick):
-  - /path/to/repo.team-design-eng-141-variant-a/  branch `team-design/eng-141-variant-a`
-  - /path/to/repo.team-design-eng-141-variant-b/  branch `team-design/eng-141-variant-b`
+  - /path/to/repo.supabuild-design-eng-141-variant-a/  branch `supabuild-design/eng-141-variant-a`
+  - /path/to/repo.supabuild-design-eng-141-variant-b/  branch `supabuild-design/eng-141-variant-b`
   - …
 
 Linear updates posted: <count>
@@ -2776,7 +2771,7 @@ team state lists); nothing in it survives the summary.
 - **§C.3-route runs FIRST, before §C.3a-pre.** The route decision
   determines whether this ticket goes through the §B design flow
   (DESIGN_EXPLORATION), is skipped entirely (AWAITING_HUMAN), or
-  proceeds through the normal §A team-build path (BUILD). Never
+  proceeds through the normal §A build path (BUILD). Never
   dispatch the §A flow against a ticket carrying the
   `Choose Design` label — that ticket is waiting on a human and
   must be left untouched.
@@ -2823,7 +2818,7 @@ team state lists); nothing in it survives the summary.
     posted before the download loop.
   - **§C.3-design step 2** — "design exploration started" comment
     posted before invoking the §B design flow.
-  - **§C.3b** — "team-build started" comment posted before
+  - **§C.3b** — "build started" comment posted before
     running the §A flow.
   - **§C.3d.5** — "QA capture in progress" comment posted before
     the capture script runs.
@@ -2844,7 +2839,7 @@ team state lists); nothing in it survives the summary.
   The ticket must show "In Progress" (or the team's equivalent
   `started`-type state) the entire time any work is being done on
   it, so human observers in Linear can see something is happening.
-  This applies to the §A team-build flow, the §B design flow, or
+  This applies to the §A build flow, the §B design flow, or
   any other dispatch flow — moving the ticket is a precondition of
   dispatch, not something delegated to the dispatched flow.
   §C.3-state is the single point that does this transition; §C.3b
@@ -2852,13 +2847,13 @@ team state lists); nothing in it survives the summary.
   skipped because the skill jumped straight to §C.3-announce or
   §C.3a-pre, that's the bug to fix — re-read §C.3-state and run it.
 - **One PR per ticket. ONE inline run of the dispatch flow per
-  ticket** (typically §A team-build; §B design is allowed for
+  ticket** (typically §A build; §B design is allowed for
   design-flavored tickets where divergent variants are wanted).
   Never bundle multiple tickets into one PR, branch, worktree, or
   dispatch invocation.
 - **Verify isolation between tickets.** Snapshot `gh pr list` before
   each call; confirm exactly one new PR with head ref
-  `team-build/<ticket-slug>-*` after. Zero or more than one → STOP.
+  `supabuild/<ticket-slug>-*` after. Zero or more than one → STOP.
 - **APPROVED from the §A flow is NOT terminal.** When the inner
   flow returns APPROVED, the outer §C runner MUST still run §C.3d
   → §C.3d.5 (upload screenshots/walkthrough to Linear) → §C.3e
@@ -2889,7 +2884,7 @@ team state lists); nothing in it survives the summary.
 - **No branch/PR reuse.** Branch name and PR number must be unique
   across the run.
 - **Clean-code bar is part of the contract.** The §C.3a clause is
-  embedded in every team-build prompt and must be enforced by the
+  embedded in every build prompt and must be enforced by the
   Team Lead's §A.6 code-review gate. Re-roll if violated.
 - Always update Linear (comment + state) after each ticket. Never
   leave a ticket stranded in "In Progress" on failure.
@@ -2905,7 +2900,7 @@ team state lists); nothing in it survives the summary.
   frontend-shaped diff, design label, or UI keywords. The
   walkthrough+stills must be captured by §A.5a (`playwright-cli`
   against the booted dev server, with repo-owned
-  `.team-build/capture.sh` taking priority when present) and
+  `.supabuild/capture.sh` taking priority when present) and
   uploaded via Linear's `fileUpload` mutation. If the §A flow
   skipped capture under the autonomous push-policy, §C.3d.5 itself
   runs the capture script — do not waive silently. The only
@@ -2916,7 +2911,7 @@ team state lists); nothing in it survives the summary.
 
 ---
 
-## §D — `worktree` (worktree-task mode)
+## §D — `worktree`
 
 ### D. Mental model
 A thin, auditable wrapper around `git worktree`. NOT a task manager,
@@ -3023,7 +3018,7 @@ Print `$WT_PATH` and `cd "$WT_PATH"` so the user can continue manually.
    tree has uncommitted changes: `<list>`. Stash them and proceed, abort,
    or override target branch to something other than $TARGET?
    (stash/abort/override)". On "stash":
-   `cd "$REPO_ROOT" && git stash push -u -m "worktree-task:pre-merge:$BRANCH:$TS"`
+   `cd "$REPO_ROOT" && git stash push -u -m "supabuild-worktree:pre-merge:$BRANCH:$TS"`
    then continue (print the stash ref). On "abort": stop. On "override":
    restart §D.5b step 1 with a new `$TARGET`.
 3. `cd "$REPO_ROOT" && git fetch --prune` (best-effort; warn on failure).
@@ -3079,13 +3074,13 @@ Print `$WT_PATH` and `cd "$WT_PATH"` so the user can continue manually.
 5. Print a one-line reflog recovery hint.
 
 #### D.5e. Stash and keep
-`cd "$WT_PATH" && git stash push -u -m "worktree-task:$BRANCH:$TS"`.
+`cd "$WT_PATH" && git stash push -u -m "supabuild-worktree:$BRANCH:$TS"`.
 Print the stash ref and the `git stash pop` command.
 
 Note: git's stash list is shared across all worktrees of the same repo
 (`refs/stash` lives in the common dir). The message prefix
-`worktree-task:$BRANCH:$TS` lets you identify this stash later with
-`git stash list | grep worktree-task`. To apply it from this worktree,
+`supabuild-worktree:$BRANCH:$TS` lets you identify this stash later with
+`git stash list | grep supabuild-worktree`. To apply it from this worktree,
 `cd "$WT_PATH" && git stash apply <stash-ref>`.
 
 #### D.5f. Adopt branch into main tree
@@ -3102,7 +3097,7 @@ tried `git checkout` manually.
      `git -C "$WT_PATH" add -A && git -C "$WT_PATH" commit -m "<msg>"`,
      continue.
    - **stash**: `git -C "$WT_PATH" stash push -u -m
-     "worktree-task:adopt:$BRANCH:$TS"`, print the stash ref, continue.
+     "supabuild-worktree:adopt:$BRANCH:$TS"`, print the stash ref, continue.
      (Stash is shared across worktrees; after checkout, the user can
      `git stash pop` in `$REPO_ROOT`.)
    - **abort**: stop, leave worktree and branch intact.
@@ -3111,7 +3106,7 @@ tried `git checkout` manually.
    If non-empty, ask: "Main tree has uncommitted changes: `<list>`.
    Stash them and proceed, or abort? (stash/abort)"
    - **stash**: `cd "$REPO_ROOT" && git stash push -u -m
-     "worktree-task:adopt-preserve:$TS"`, print the stash ref.
+     "supabuild-worktree:adopt-preserve:$TS"`, print the stash ref.
    - **abort**: stop.
 
 3. **Same-branch guard**: if
