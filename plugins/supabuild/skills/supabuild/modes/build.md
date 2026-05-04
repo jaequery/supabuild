@@ -1031,6 +1031,35 @@ checklist and write a **gap list** (file + concrete fix per item):
 - **Errors.** Are failures user-actionable? No raw stack traces in the
   UI. Server errors logged with enough context to debug. Retries where
   retry is safe.
+- **Design system compliance (UI).** This bullet is mandatory whenever
+  `$UI_DIFF` is non-empty. Discover the project's design contract
+  before judging the diff:
+  ```bash
+  cd "$WT_PATH" && ls DESIGN.md design-system.md STYLE.md STYLE_GUIDE.md \
+    docs/design.md docs/design-system.md docs/DESIGN.md .design/*.md 2>/dev/null
+  ```
+  Also scan `CLAUDE.md`/`AGENTS.md` for "design", "design system",
+  "style guide", or "component" sections. Read every match end-to-end
+  (these files are the authoritative spec — your taste is not).
+  Then audit every changed/added UI surface against the documented
+  rules. Specifically check, for each interactive element in the
+  diff (buttons, inputs, links, cards, modals, badges):
+  - Does the documented rule for that element exist? If yes, does
+    the diff use **the exact class string / component / variant**
+    the doc prescribes?
+  - Common failure mode: a doc says
+    `<Button className="w-full h-auto rounded-xl py-3 text-base font-semibold">`
+    and the diff ships `<Button className="w-full h-auto rounded-xl">` —
+    visually thin, missing vertical padding and weight. The
+    walkthrough video alone will not catch this; you must compare
+    class strings against the doc.
+  - If no doc exists, compare the new element to the *closest existing
+    sibling* in the same surface (e.g. another submit button on a
+    sibling page) and flag any divergence as a gap.
+  Mismatches go on the gap list as `<file>:<line> — uses <actual>;
+  design system requires <expected> per <doc>:<line>`. Dispatch the
+  fix to **`UI Designer`** or **`UX Architect`** (not a generalist) so
+  the corrector reads the same doc you did.
 - **Accessibility (UI).** Keyboard navigation, focus order, visible
   focus ring, semantic HTML, alt text, color contrast, reduced-motion
   respected, screen-reader labels on icon-only buttons.
