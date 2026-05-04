@@ -2,22 +2,6 @@
 
 A `/supabuild` slash command for Claude Code that turns a one-line task into a clean PR.
 
-## Why bother
-
-If you've left Claude Code running for thirty minutes on a real task, you've hit at least three of these:
-
-**It says "done" and the UI is broken.** A diff doesn't tell you whether the new modal actually opens. You pull the branch, boot the dev server, and find out by hand. supabuild won't say APPROVED until a Playwright walkthrough has booted the dev server, clicked through the change, and left a `.webm` plus step screenshots on disk at `.supabuild/evidence/`. The reviewer checks the file exists before passing the gate.
-
-**It "ships" without ever opening a PR.** Claude does the work, declares victory, and the branch sits on your laptop. You find it three days later. supabuild's build mode only counts a build done after `gh pr create` returns a URL, and prints that URL back to you.
-
-**It loses the screenshots in your ticket.** You paste a Linear ticket with three reference images and watch Claude ignore them, because `uploads.linear.app` URLs are auth-gated and the agent can't render them. `/supabuild linear` downloads them with your token first, drops them where the build team can vision them, and only then starts work. `/supabuild github` hydrates `user-attachments` URLs the same way (those are public, but the build still wants them on disk).
-
-**It mutates your working tree.** Two parallel runs, two half-done branches, one dirty index. Every supabuild run happens in a fresh `git worktree` in a sibling directory, on a branch named for the task. After the PR opens, the worktree is removed.
-
-**It trashes your dev database.** Two parallel builds running migrations against the same Postgres tramples both. supabuild detects the DB service in your `docker-compose.yml`, gives each worktree its own logical database (`<parent>_<slug>`), points the worktree's `.env` at it, and drops it when the PR opens. Best-effort: if there's no compose file, it skips and continues.
-
-**You get one design option when you wanted three.** "Redesign the empty state" comes back as a single take you then have to argue with. `/supabuild design` builds 2–10 divergent variants in parallel, each in its own worktree, and opens an HTML gallery with screenshots so you can pick one.
-
 ## Key features
 
 Everything that has to be true for a Claude Code build to ship without you babysitting it.
