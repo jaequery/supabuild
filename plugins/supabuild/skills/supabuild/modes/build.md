@@ -847,32 +847,97 @@ EOF
 sb_plan_update "$PLAN_BODY"
 ```
 
-Dispatch the build agents. Each agent prompt MUST include:
+#### A.3.1 Prompt skeleton (cache-friendly, mandatory order)
 
-- The full task description and the Team Lead's plan.
-- The exact `$WT_PATH` and an instruction that **all file changes happen
-  under `$WT_PATH/…` using absolute paths**.
-- The agent's **specific order** — not "help with the build", but a
-  precise scope: "Implement the auth API at `$WT_PATH/server/auth/…`
-  using <stack>; do not touch the UI layer."
-- The non-negotiables (latest stable libs, best practices, minimalist UX
-  if UI, no secrets in code, no TODOs).
-- An explicit instruction to **commit their work** in the worktree with a
-  conventional, descriptive message before returning.
-- A short structured report back: what they built, key files, decisions,
-  open questions, anything they punted.
+Subagent prompts MUST follow this exact ordering. The first four
+blocks are **identical across every parallel agent in a round** —
+keeping them at the front lets the Anthropic prompt cache hit on
+the prefix and skip re-billing for blocks 1–4 on every agent past
+the first. Per-agent variability lives only in the suffix.
 
-Run independent agents **in parallel in a single message**. Run dependent
-agents sequentially (e.g., backend API before the frontend that consumes
-it, unless contracts are stubbed first).
+```
+[1 — IMMUTABLE PREFIX, identical across all agents in the round]
+  ## Plan
+  <verbatim §A.2 plan body — paste the same string in every dispatch>
 
-After the round, the Team Lead reads every agent's report and inspects the
-worktree (`git log`, `git diff`, targeted `Read`s). The Team Lead writes a
-short **integration check**: do the pieces fit? Any contradictions? Any
-gaps?
+  ## Non-negotiables
+  - Latest stable versions of the chosen stack
+  - Reuse existing helpers; never reinvent
+  - No secrets in code; env-var boundaries
+  - No dead code, TODOs, or commented-out blocks
+  - Accessibility AA where UI exists
+  - All file writes under $WT_PATH using absolute paths
+  - Commit your work with a conventional, descriptive message
 
-If integration is broken, the Team Lead either fixes it inline (small) or
-dispatches a follow-up agent (large) before proceeding.
+  ## Workspace
+  $WT_PATH (worktree root)
+  $BASE_SHA (base commit; use `git diff $BASE_SHA..HEAD` for the diff)
+
+  ## Repo conventions
+  <2–6 bullets the Team Lead extracted from CLAUDE.md/AGENTS.md/
+   recent commits — same string for every agent>
+
+[2 — VARIABLE SUFFIX, per-agent]
+  ## Your scope
+  <one sentence: what to build, which files, which to avoid>
+
+  ## Report back
+  - Files touched
+  - Key decisions
+  - Open questions
+  - Anything punted
+```
+
+The Team Lead constructs the prefix string ONCE per round and reuses
+it byte-for-byte across every parallel `Agent` dispatch. Do not
+interpolate per-agent details into blocks 1–4 — they are static.
+
+#### A.3.2 Round-2+ delta dispatch (NEEDS-ANOTHER-ROUND remediation)
+
+When §A.5 returns NEEDS ANOTHER ROUND, **do NOT re-paste the full
+prefix** to remediation dispatches. Round 1 wrote `plan.md` and
+non-negotiables to disk; round 2+ agents Read them on demand.
+
+Default remediation path: dispatch a **single Remediator** (use
+`engineering-senior-developer`, or the original agent if the
+remediation is narrowly tied to that agent's diff). The dispatch
+prompt is just:
+
+```
+## Remediation (round $N)
+Worktree: $WT_PATH
+Base diff: git diff $BASE_SHA..HEAD
+Plan: read $WT_PATH/.supabuild/plan.md if you need full context.
+
+## Issues to fix
+<verbatim remediation list from §A.5 verdict>
+
+## Report back
+- Files touched, commit SHAs.
+```
+
+Re-dispatch the **full multi-agent roster** only when the remediation
+list spans 3+ distinct domains (e.g. "fix auth + fix migration +
+fix UI a11y all"). For 2-domain remediation, dispatch only the
+relevant 2 specialists; for 1-domain remediation, dispatch one
+specialist or the Remediator.
+
+This rule cuts ~60–80% of round-2+ token cost vs. re-firing the
+full team with a re-pasted plan + non-negotiables.
+
+#### A.3.3 Dispatch + integration
+
+Run independent agents **in parallel in a single message**. Run
+dependent agents sequentially (e.g., backend API before the frontend
+that consumes it, unless contracts are stubbed first).
+
+After the round, the Team Lead reads every agent's report and
+inspects the worktree (`git log`, `git diff`, targeted `Read`s) and
+writes a short **integration check**: do the pieces fit? Any
+contradictions? Any gaps?
+
+If integration is broken, the Team Lead either fixes it inline
+(small) or dispatches a follow-up agent (large) before proceeding.
 
 **Plan update — round complete.** Append a `**R$N $agent**` bullet
 under `### Round log` for each agent that ran, tick any AC the round
@@ -1121,179 +1186,36 @@ logged the skip — do not run the script, do not produce the
 artifact, and the §A.5 Step 3 hard gate will not fire.
 
 When `$UI_DIFF` from §A.5 is non-empty AND `walkthrough` is enabled,
-the **Team Lead executes this script inline** (do not delegate to
-the QA agent — its dispatch prompt won't carry the script verbatim,
-and past runs have silently skipped capture as a result). The
-artifact at `$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}`
-is a hard APPROVED precondition per §A.5 step 3. This replaces the
+the **Team Lead executes capture inline** (do not delegate to the QA
+agent — its dispatch prompt won't carry the script verbatim, and
+past runs have silently skipped capture as a result). The artifact
+at `$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}` is a
+hard APPROVED precondition per §A.5 step 3. This replaces the
 post-APPROVED §C.3d.5 boot in the linear flow and the §A.5.5
 still-only flow.
+
+**Read `modes/build-walkthrough.md` now** — it carries the resolution
+order, dev-server detection table, walkthrough-steps file convention,
+shipped `scripts/capture.sh` invocation, optional test-bonus block,
+and failure semantics. Splitting these out keeps build.md slim for
+the ~70% of runs that have no UI diff (or `walkthrough` disabled),
+where build-walkthrough.md is never loaded.
 
 **Capture is `playwright-cli` against a live dev server.** Language-
 agnostic by design — works for PHP/Laravel, Django, Rails, Go, Bun,
 Node, anything that boots an HTTP server. The walkthrough proves
 "the feature visibly works"; existing test suites are an *optional
-bonus* run after the walkthrough and **do not gate APPROVED**. We do
-not try to integrate with the project's test runner, force `video:
-"on"` overrides, or harvest `.webm` files from `playwright-output/`.
+bonus* run after the walkthrough and **do not gate APPROVED**.
 
-**Pre-flight.** Make sure `playwright-cli` is on PATH:
-
-```bash
-command -v playwright-cli >/dev/null 2>&1 || npm i -g @playwright/cli
-```
-
-**Capture-script resolution order** (first that exists wins):
-
-1. `$WT_PATH/.supabuild/capture.sh` — repo-owned hook (highest
-   priority). Receives env vars `WALK_OUT` (= `$EVID`) and `WALK_URL`
-   and is responsible for the entire boot → record → teardown cycle.
-   Use this when the repo has custom auth, migrations, or preview-URL
-   handling that boilerplate detection can't cover. The hook MUST
-   leave `$WALK_OUT/00-walkthrough.{webm,mp4}` on disk; everything
-   else is optional.
-
-2. `package.json` field `supabuild.capture` — same contract as the
-   hook.
-
-3. **Default: `playwright-cli` walkthrough.** Boot the dev server per
-   the language-detection table below, wait for it to answer, then
-   drive it with `playwright-cli`.
-
-**Dev server detection** (first match wins). Boot in background,
-capture printed URL into `$URL` (or default to `http://localhost:$PORT`
-using the project's configured port), poll until it answers (cap at
-30s):
-
-| Detection                                | Boot command                                                          |
-|------------------------------------------|-----------------------------------------------------------------------|
-| `pnpm-lock.yaml` + `dev` script          | `pnpm install --frozen-lockfile && pnpm db:migrate 2>/dev/null; pnpm db:seed 2>/dev/null; pnpm dev` |
-| `bun.lockb` + `dev` script               | `bun install && bun run dev`                                          |
-| `package.json` only                      | `npm install && npm run dev`                                          |
-| `composer.json` + `artisan` (Laravel)    | `composer install && php artisan migrate --seed 2>/dev/null; php artisan serve --port=$PORT` |
-| `composer.json` (vanilla PHP)            | `composer install && php -S localhost:$PORT -t public`                |
-| `manage.py` (Django)                     | `pip install -r requirements.txt && python manage.py migrate 2>/dev/null; python manage.py runserver $PORT` |
-| `Gemfile` + `bin/dev`                    | `bundle install && bin/dev`                                           |
-| `Gemfile` (Rails)                        | `bundle install && bundle exec rails db:migrate 2>/dev/null; bundle exec rails server -p $PORT` |
-| `go.mod` + web entry (`cmd/server`/`main.go`) | `go run ./...` (or the `Makefile` `run` target)                  |
-| `Cargo.toml` with web crate              | `cargo run`                                                           |
-
-If the server never comes up within 30s, that's a capture failure
-(see Failure semantics below). Capture the dev-server PID at boot
-(`SERVER_PID=$!`) so the script can `kill "$SERVER_PID"` on exit.
-
-**Walkthrough script.** The Team Lead authors per-ticket steps from
-the AC. When the AC isn't browser-actionable (backend rate-limit
-work, CLI changes, infra), fall back to the generic
-scroll-and-screenshot tour at the bottom of the script — at minimum
-that proves the page renders.
-
-```bash
-SESS="sb-$$"
-EVID="$WT_PATH/.supabuild/evidence"
-mkdir -p "$EVID"
-
-playwright-cli -s="$SESS" open "$URL"
-playwright-cli -s="$SESS" resize 1440 900
-playwright-cli -s="$SESS" video-start "$EVID/00-walkthrough.webm"
-
-# === Per-ticket steps authored from the AC ===
-# Mark each AC step with video-chapter; screenshot at each state
-# you'd want a reviewer to see. Examples:
-#
-#   playwright-cli -s="$SESS" video-chapter "Login"
-#   playwright-cli -s="$SESS" fill "input[name=email]" "test@example.com"
-#   playwright-cli -s="$SESS" fill "input[name=password]" "test1234"
-#   playwright-cli -s="$SESS" click "button[type=submit]"
-#   playwright-cli -s="$SESS" screenshot "$EVID/01-step.png"
-#
-# === Generic fallback (use only when AC is not browser-actionable) ===
-playwright-cli -s="$SESS" video-chapter "Top of page"
-playwright-cli -s="$SESS" screenshot "$EVID/01-step.png"
-playwright-cli -s="$SESS" eval "() => window.scrollTo({ top: 800, behavior: 'smooth' })"
-playwright-cli -s="$SESS" video-chapter "Mid-page"
-playwright-cli -s="$SESS" screenshot "$EVID/02-step.png"
-playwright-cli -s="$SESS" eval "() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })"
-playwright-cli -s="$SESS" video-chapter "Bottom"
-playwright-cli -s="$SESS" screenshot "$EVID/03-step.png"
-
-playwright-cli -s="$SESS" video-stop
-playwright-cli -s="$SESS" close
-
-# Tear down the dev server.
-kill "$SERVER_PID" 2>/dev/null || true
-```
-
-**Artifact contract** (preserved for §C.3d.5):
-
-- `$EVID/00-walkthrough.webm` — primary walkthrough video. **Hard
-  APPROVED gate** per §A.5 step 3 (≥50KB).
-- `$EVID/0[1-3]-step.png` — up to 3 step stills (best-effort).
-- `$EVID/playwright-report.zip` — only present when the optional
-  test bonus below ran and produced a report.
-
-`playwright-cli` is session-based — every command must carry the
-same `-s=<session>` flag, otherwise each call spawns its own browser
-and the video records nothing. `close` at the end frees the session.
-
-#### Optional bonus — run existing tests
-
-After the walkthrough completes, if the repo has a test runner
-configured, run it for **bonus signal only**. Pass/fail is surfaced
-in the §A.6 verdict but does **not gate APPROVED**. A failing project
-test that has nothing to do with the diff under review (flaky,
-unrelated suite, pre-existing breakage) is not a reason to block the
-ship. Skip this entire block on non-JS/TS repos — there's no PHPUnit /
-PyTest / RSpec hookup, by design.
-
-```bash
-# Playwright — produces a browseable HTML report; archive it for §C.3d.5.
-PW_CFG=$(find "$WT_PATH" -maxdepth 4 -name 'playwright.config.*' \
-  -not -path '*/node_modules/*' | head -1)
-if [ -n "$PW_CFG" ]; then
-  ( cd "$(dirname "$PW_CFG")" \
-    && pnpm exec playwright test \
-       --reporter=list,html \
-       --output="$EVID/playwright-output" 2>&1 \
-    | tee "$EVID/test-run.log" \
-    || echo "playwright tests had failures (non-blocking)" )
-  if [ -d "$EVID/playwright-report" ]; then
-    ( cd "$EVID" && zip -qr playwright-report.zip playwright-report )
-  fi
-fi
-
-# Cypress — pass/fail to log only; no archive.
-if [ -f "$WT_PATH/cypress.config.ts" ] || [ -f "$WT_PATH/cypress.config.js" ]; then
-  ( cd "$WT_PATH" \
-    && npx cypress run --reporter spec 2>&1 \
-    | tee -a "$EVID/test-run.log" \
-    || echo "cypress tests had failures (non-blocking)" )
-fi
-```
-
-When the bonus run fires, the Team Lead reads `$EVID/test-run.log`
-and notes pass/fail in the §A.6 verdict. If a failure clearly
-corresponds to the diff under review (not flaky/unrelated), the Team
-Lead may choose NEEDS ANOTHER ROUND on that basis — but the **video
-walkthrough remains the primary verification.**
-
-#### Failure semantics
-
-- Walkthrough script exits non-zero, dev server doesn't answer
-  within 30s, or the video file is missing/<50KB →
-  `capture failed: <reason>` is recorded as a finding. Team Lead
-  decides whether this blocks APPROVED:
-  - If the diff is genuinely UI-bearing, capture failure = NEEDS
-    ANOTHER ROUND (or ESCALATED if the failure is structural, e.g.
-    no detectable boot command, or auth-walled app with no
-    `.supabuild/capture.sh`).
-  - If the diff is UI-adjacent but verifiable another way (Storybook,
-    snapshot, terminal transcript), Team Lead may waive and proceed.
-- Optional test-bonus failures are surfaced but **do not gate
-  APPROVED** unless the failure clearly corresponds to the diff.
-- This is the only place capture failure is allowed to surface as a
-  blocker. §A.5.5 and §C.3d.5 reuse the artifact produced here; they
-  do not re-boot the server.
+**Quick reference** (full details in `modes/build-walkthrough.md`):
+- Resolution order: `$WT_PATH/.supabuild/capture.sh` → `package.json`
+  `supabuild.capture` → shipped `scripts/capture.sh`.
+- Per-build steps go in `$WT_PATH/.supabuild/walkthrough-steps.sh`
+  (sourced by capture.sh after `video-start`); generic
+  scroll-and-screenshot tour runs if absent.
+- Hard APPROVED gate: `$EVID/00-walkthrough.{webm,mp4}` ≥ 50KB.
+- Capture failure on a UI-bearing diff → NEEDS ANOTHER ROUND
+  (or ESCALATED on structural failures).
 
 The Team Lead reads whichever reports actually ran (per Step 2's
 per-step gating) and renders a verdict:
@@ -1364,207 +1286,18 @@ in the §A.6 report. Do not fabricate shots.
 
 ### A.6. Ship
 
-When the verdict is APPROVED, the Team Lead produces a **final report**:
+The verdict is APPROVED. **Read `modes/build-ship.md` now** — it
+carries:
+- The final-report template (`/supabuild build — APPROVED` block).
+- §A.6a — `$TARGET_BRANCH` set: rebase preflight + typed-`yes` gate
+  + force-with-lease push + `gh pr create` + plan-mirror into PR
+  body + worktree/branch auto-cleanup + per-worktree DB drop.
+- §A.6b — no `$TARGET_BRANCH`: 6-option hand-back menu (keep / merge
+  / rebase+push / discard / stash / adopt) following §D's typed-`yes`
+  gates.
 
-```
-## /supabuild build — APPROVED
-**Goal:** <one line>
-**Branch:** $BRANCH
-**Worktree:** $WT_PATH
-**Commits:** <count>, <range>
-**Rounds run:** <n>
-**Gates run:** review, qa, security, polish, walkthrough  ← from SUPABUILD_STEPS (omit row if signal absent)
-**Gates skipped:** <inverse list>                          ← omit row if empty
-
-### What was built
-- <bullet>
-- <bullet>
-
-### Security audit
-- <findings + how resolved>     ← or "skipped via SUPABUILD_STEPS" if `security` off
-
-### Polish pass
-- <gap list summary>            ← or "skipped via SUPABUILD_STEPS" if `polish` off
-
-### QA + code review
-- <findings + how resolved>     ← or "skipped via SUPABUILD_STEPS" if both `qa` and `review` off; partial when only one ran
-
-### Known limitations / follow-ups
-- <bullet> (if any)
-```
-
-When sections were skipped via `SUPABUILD_STEPS`, do **not** drop
-their headers — keep them with a single line stating the skip and
-which signal triggered it. Reviewers reading the report should be
-able to see at a glance which gates ran without cross-referencing
-the round log.
-
-Then choose the ship path based on `$TARGET_BRANCH`:
-
-#### A.6a. `$TARGET_BRANCH` was provided — push and open PR
-
-**Do NOT append a `## Visual evidence` section that links into
-`.supabuild/evidence/...`.** Evidence is not committed (per §A.5.5),
-so relative-path image links would 404 on GitHub. Instead, append a
-short **`## Walkthrough`** section that names the local artifacts:
-
-```markdown
-## Walkthrough
-
-QA captured a walkthrough video and step screenshots; they are
-attached to the Linear ticket (and/or as a follow-up PR comment) —
-not committed to the branch.
-
-- Walkthrough: `00-walkthrough.webm` (~<n>s)
-- Steps: `01-step.png`, `02-step.png`, `03-step.png`
-```
-
-If §A.5.5 was skipped ("no visual surface" or "not captured: <reason>"),
-state that explicitly in the same section instead of omitting it. The
-orchestrator (§C.3d.5, or a human running standalone) is responsible
-for uploading the actual files to Linear / a PR comment.
-
-If `walkthrough` was disabled via `SUPABUILD_STEPS`, the section
-becomes:
-
-```markdown
-## Walkthrough
-
-Walkthrough capture was disabled for this run via `SUPABUILD_STEPS`
-(orchestrator opted out of visual proof). No video or screenshots
-were captured. Reviewer should manually verify the UI surface before
-merging if needed.
-```
-
-State the skip explicitly — silently omitting the section would let
-"no walkthrough" look indistinguishable from "we forgot".
-
-1. Detect remote: `git -C "$REPO_ROOT" remote get-url origin`. If no
-   `origin`, abort the push and tell the user how to add one — leave the
-   worktree as-is so they can finish manually.
-2. `cd "$WT_PATH" && git fetch origin` (warn on failure; do not abort).
-3. Resolve base ref: `origin/$TARGET_BRANCH` if it exists, else
-   `$TARGET_BRANCH`, else `$BASE_SHA`. Pick the first that exists.
-4. Record lease target before rebase:
-   `LEASE=$(git -C "$WT_PATH" rev-parse "origin/$BRANCH" 2>/dev/null || echo "")`.
-5. **Merge-conflict preflight.** Probe whether `$BRANCH` merges cleanly
-   into `$BASE_REF` before touching the index:
-   `git -C "$WT_PATH" merge-tree --write-tree --name-only --no-messages "$BASE_REF" "$BRANCH"`.
-   If the output contains any filenames (conflicting paths), STOP and
-   list them to the user — do not proceed to step 6.
-6. `cd "$WT_PATH" && git rebase "$BASE_REF"` — on conflict, STOP and
-   hand back to the user; do not run `git rebase --abort`. The user
-   resolves locally (`git add` + `git rebase --continue`) and re-runs.
-7. **Post-rebase conflict guard.** Before pushing, verify the working
-   tree is clean and no conflict markers survived:
-   - `git -C "$WT_PATH" status --porcelain` must be empty.
-   - `git -C "$WT_PATH" ls-files -u` must be empty (no unmerged entries).
-   - `git -C "$WT_PATH" grep -nE '^(<{7}|={7}|>{7}) ' -- ':!*.md'` must
-     return nothing (no leftover `<<<<<<<` / `=======` / `>>>>>>>` markers).
-   Any check failing → STOP and report to the user. Do not push.
-8. **Typed-`yes` gate** before pushing: show `$BRANCH`, the LEASE target
-   (or "first push"), and `$BASE_REF`. Require literal `yes`.
-9. Push:
-   - LEASE non-empty: `git -C "$WT_PATH" push --force-with-lease="$BRANCH:$LEASE" --force-if-includes -u origin "$BRANCH"`.
-   - LEASE empty: `git -C "$WT_PATH" push -u origin "$BRANCH"`.
-10. `cd "$WT_PATH" && gh pr create --fill --base "$TARGET_BRANCH"`. If
-    `gh` is missing, print the push URL from step 9 and stop.
-10.5. **Mirror the plan into the PR body.** `gh pr create --fill`
-    seeds the PR body from the latest commit message — replace it
-    with the same fenced plan block that's on the ticket so reviewers
-    see goal/AC/risks/round log without leaving the PR. Run after
-    `gh pr create` returns; failure is non-fatal (plan still lives on
-    the ticket and on disk).
-    ```bash
-    PR_NUMBER=$(gh pr view --json number -q '.number')
-    PR_BODY=$(gh pr view --json body -q '.body // ""')
-    PLAN_BODY_FOR_PR=$(cat "$WT_PATH/.supabuild/plan.md" 2>/dev/null)
-    if [ -n "$PLAN_BODY_FOR_PR" ]; then
-      sb_plan_splice "$PR_BODY" "$PLAN_BODY_FOR_PR" \
-        > "/tmp/sb-pr-body-$$.md"
-      gh pr edit "$PR_NUMBER" --body-file "/tmp/sb-pr-body-$$.md" \
-        || echo "warn: PR body plan mirror failed (continuing)"
-      rm -f "/tmp/sb-pr-body-$$.md"
-    fi
-    ```
-    Also flip the plan's `**Status:**` to `shipped` and append a
-    `**PR:** $PR_URL` line under it before this mirror — that single
-    `sb_plan_update` call propagates the shipped status to the
-    ticket too:
-    ```bash
-    PR_URL=$(gh pr view --json url -q '.url')
-    # update plan.md status line + append PR link, then:
-    sb_plan_update "$PLAN_BODY"
-    # PR body mirror above will pick up the shipped status from disk.
-    ```
-11. **Auto-cleanup after successful push + PR**: once the PR has been
-   opened (the branch lives on origin and locally), remove the worktree
-   automatically — UNLESS an orchestrator has asked you to defer.
-
-   **Defer signal.** If the invoking prompt body contains the literal
-   string `DEFER_WORKTREE_CLEANUP=1` (set by §C so §C.3d.5 can read
-   evidence files off disk), SKIP this step entirely.
-   Print: `worktree retained for orchestrator: $WT_PATH`. The
-   orchestrator owns cleanup after it's done with the artifacts.
-
-   Otherwise, clean up now:
-   ```
-   # Evidence is no longer committed (per §A.5.5), so nothing under
-   # $WT_PATH/.supabuild/evidence/ lives on origin. The whole tree is
-   # ephemeral — sweep it before `worktree remove`, since the dir is
-   # untracked and would block removal.
-   rm -rf "$WT_PATH/.supabuild/evidence" 2>/dev/null
-   git -C "$REPO_ROOT" worktree remove "$WT_PATH"
-   git -C "$REPO_ROOT" branch -d "$BRANCH"   # safe delete; skip if it fails (unmerged)
-   ```
-   Print one line confirming both. If `worktree remove` STILL fails
-   after the sweep (means real uncommitted changes survived push), fall
-   back to asking the user whether to force-remove or keep — do not
-   silently leave artifacts without flagging. In autonomous-push mode
-   without the defer signal, force-remove is the right call after the
-   sweep — log the reason but don't block on it.
-12. **Drop the per-worktree DB** if §A.1.5 created one. Run from
-    `$REPO_ROOT` against the same compose service:
-    - **Postgres:**
-      ```
-      docker compose exec -T <svc> psql -U "$USER" -d postgres \
-        -c "DROP DATABASE IF EXISTS \"$DB_BRANCH\" WITH (FORCE);"
-      ```
-    - **MySQL / MariaDB:**
-      ```
-      docker compose exec -T <svc> mysql -uroot -p"$ROOT_PASS" \
-        -e "DROP DATABASE IF EXISTS \`$DB_BRANCH\`;"
-      ```
-    - **Mongo:**
-      ```
-      docker compose exec -T <svc> mongosh "$BRANCH_URL" \
-        --quiet --eval "db.dropDatabase()"
-      ```
-    Failures here are non-fatal — log and continue. Skip entirely if
-    §A.1.5 was skipped.
-
-#### A.6b. No target branch — hand back the worktree
-
-Print `$WT_PATH` and `$BRANCH` and offer the standard 6-option menu
-from §D (the worktree flow):
-
-```
-(a) keep worktree as-is
-(b) merge $BRANCH into a target branch
-(c) rebase onto base, push, open PR
-(d) discard worktree and branch (typed-yes gated)
-(e) stash uncommitted changes, keep worktree
-(f) adopt branch: remove worktree, checkout $BRANCH in main tree
-```
-
-For destructive options, follow §D's typed-`yes` gates and discard
-rules verbatim — do not invent shortcuts.
-
-If §A.1.5 created a per-worktree DB and the user picks **(d) discard**
-or **(f) adopt branch**, also drop the branch DB using the §A.6a step
-12 commands. For **(c) rebase + push**, run the §A.6a step 12 cleanup
-after the PR is opened. For **(a)/(b)/(e)**, leave the branch DB in
-place — the user is still using it.
+Splitting this out keeps build.md slim for runs that never reach
+ship (NEEDS ANOTHER ROUND escalations, ESCALATED runs).
 
 ### A.7. Failure recovery (read-only reference)
 

@@ -107,3 +107,31 @@ Two flows orchestrate other flows:
   `modes/build.md` only when §E reaches §E.3c. Same lazy-load rule.
 
 §A, §B, §D never dispatch other modes — they're terminal.
+
+#### Burndown caching
+
+Linear (§C) and GitHub (§E) burndowns dispatch §A (build) once per
+ticket. Read `modes/build.md` **once** at the first BUILD-route
+ticket and treat it as cached for subsequent tickets in the same
+loop — do not Read it again per ticket. Same rule for `modes/design.md`
+on DESIGN_EXPLORATION-route tickets. A 10-ticket Linear sweep loads
+each mode file once, not 10×.
+
+### Sub-mode files (lazy-loaded by build.md)
+
+Build mode itself splits its phases across three files. Direct
+`/supabuild build` only loads `modes/build.md` up front; the
+sub-files are read by build.md when their phase actually fires:
+
+| Sub-file | Loaded when |
+|---|---|
+| `modes/build-walkthrough.md` | §A.5a fires (UI diff present AND `walkthrough` step enabled) |
+| `modes/build-ship.md` | §A.6 fires (verdict is APPROVED) |
+| `scripts/capture.sh` | Default capture path (executed by build-walkthrough.md) |
+
+A backend-only build with a NEEDS-ANOTHER-ROUND escalation never
+loads either sub-file. A standard ship loads build-ship.md once.
+A UI ship loads both. The `scripts/capture.sh` path is resolved
+from `<plugin-root>/scripts/capture.sh` where `<plugin-root>` is
+two levels up from `<skill-base>` (the skill base is
+`<plugin-root>/skills/supabuild`).
