@@ -3,7 +3,9 @@
 GitHub-Projects-v2 mirror of §C. For every issue in `Todo` status on
 the repo's supabuild project, run the §A build flow against that
 issue's body and ship a separate PR per issue. Same one-PR-per-issue
-guarantee, same QA gate, same design fork — only the queue backend
+guarantee, same design fork, **user-selectable gates** (QA, code
+review, security audit, polish pass, walkthrough capture — each
+checkbox-toggled per run, see §E.0.6) — only the queue backend
 differs.
 
 If you already use Linear, prefer §C — Linear's API and workflow
@@ -56,11 +58,22 @@ Optional flags:
   (sequential).** Pass an explicit number to parallelize. Warn if
   effective concurrency exceeds 5 (shared `gh` rate limits) but do
   not cap.
+- `--steps <csv>` — explicit comma-separated set of gates to run, drawn
+  from `review`, `qa`, `security`, `polish`, `walkthrough`. Bypasses
+  the §E.0.6 checkbox prompt. Empty value (`--steps ""`) disables every
+  gate (implement-and-ship). When omitted, §E.0.6 prompts (or reuses
+  cached selection).
+- `--configure` — re-prompt the §E.0.6 checkboxes even when a cached
+  selection exists in `git config supabuild.githubSteps`. Use to change
+  which gates run without editing the cached value by hand.
 - `--dry-run` — list issues that would be processed and stop.
 
 **No confirmation prompt. Ever.** Same contract as §C — start
 immediately on resolved settings, only stop on `--dry-run` or
-preflight failure.
+preflight failure. The §E.0.6 step-selection prompt is *configuration*,
+not run confirmation: it asks once per run (cached default makes
+reruns one keystroke), is silent when `--steps` is passed, and never
+gates the queue itself.
 
 ### GitHub interface — `gh` CLI
 
@@ -240,6 +253,108 @@ idempotently — re-running on a configured repo is a no-op.
    manual step for legacy projects. New projects supabuild creates need
    no manual setup.
 
+### E.0.6. Workflow step selection (run-level batcher for §A.0.6)
+
+§E is a destination adapter — its only job is to feed §A one issue
+at a time. The verification-step contract (`SUPABUILD_STEPS=<csv>`,
+the five tokens, what each gates) is owned by §A.0.6 and §A.0.7. This
+section is purely the **run-level batcher** of that prompt: ask once
+per `/supabuild github` run instead of once per issue, then relay the
+answer to every per-issue §A invocation via the build prompt body.
+
+If you want to know what each step *does*, what tokens are valid, or
+how the parsing rules work, see §A.0.6 (the source of truth) and
+§A.0.7 (the parser). This section does not redefine any of that.
+
+Repeated here for convenience only — the canonical table lives in
+§A.0.6:
+
+| Step          | Section  |
+| ------------- | -------- |
+| `review`      | §A.5     |
+| `qa`          | §A.5     |
+| `security`    | §A.4     |
+| `polish`      | §A.4.5   |
+| `walkthrough` | §A.5a    |
+
+#### Resolution order
+
+1. **`--steps <csv>` was passed.** Parse it (lowercased, trimmed,
+   comma-split), validate every token against the table above (reject
+   unknowns with a hard error), set `STEPS_CSV` to the canonical
+   sorted CSV, skip the prompt entirely. `--steps ""` is valid and
+   means "all gates off". Persist the choice to
+   `git config supabuild.githubSteps "$STEPS_CSV"` so subsequent
+   no-flag runs default to it.
+
+2. **`--configure` was passed.** Force the prompt regardless of any
+   cached value.
+
+3. **Cached value exists.** Read
+   `git config --get supabuild.githubSteps` (may be empty string —
+   that's still a valid cached "all off" answer; only treat
+   `git config` exit status non-zero as "no cache"). If present,
+   default the checkbox state to that, then prompt — letting the user
+   tweak with one keystroke if their selection hasn't changed.
+
+4. **No cache.** Default all five checkboxes to checked (current
+   pre-feature behavior) and prompt.
+
+#### The prompt
+
+Single `AskUserQuestion` with one multi-select question:
+
+```
+Q: Which gates should run for every issue this run?
+   (uncheck to skip; implementation rounds always run)
+
+Options:
+  [x] Code review (§A.5 Code Reviewer)
+  [x] QA agent (§A.5 — tests, lint, walkthrough hard-gate)
+  [x] Security audit (§A.4)
+  [x] Polish & gap pass (§A.4.5)
+  [x] UI walkthrough capture (§A.5a — only on UI diffs)
+```
+
+Initial check state per resolution order step 3 / 4. Multi-select.
+The user submits once; their selection becomes `STEPS_CSV` (canonical
+sorted CSV from the table's `Step` column).
+
+#### Persist + announce
+
+```bash
+git config supabuild.githubSteps "$STEPS_CSV"
+```
+
+Then print a one-line resolved-set banner (and the inverse, so the
+user can see what's skipped at a glance):
+
+```
+## /supabuild github — gates: review, qa, security
+(skipped: polish, walkthrough)
+```
+
+If `STEPS_CSV` is empty, print the warning before continuing:
+
+```
+## /supabuild github — gates: NONE
+heads up: all gates off — every issue will ship after implementation
+rounds with no QA, code review, security audit, polish pass, or
+walkthrough capture. The Team Lead's own integration check is the
+only thing standing between the diff and the PR.
+```
+
+The user is allowed to ship with all gates off — supabuild does not
+veto. But it must be loud about it.
+
+#### Carve-out from §E.0's "no confirmation prompt ever"
+
+This step is *configuration*, not run/queue confirmation. It runs
+once per `/supabuild github` invocation, never gates the issue queue
+itself, and is fully silent when `--steps` is passed. Reruns default
+to the cached selection so steady-state usage is one keystroke
+(the user just hits Enter to accept the cached defaults).
+
 ### E.1. Preflight
 
 1. **`gh` install + auth.** Same gap detection + walkthrough as
@@ -289,6 +404,8 @@ idempotently — re-running on a configured repo is a no-op.
    echo "$INPROG_OPT_ID"   > "$SGH_CACHE_DIR/opt-inprog"
    echo "$REVIEW_OPT_ID"   > "$SGH_CACHE_DIR/opt-review"
    echo "$DONE_OPT_ID"     > "$SGH_CACHE_DIR/opt-done"
+   # Workflow steps resolved in §E.0.6. Empty string is valid (= all gates off).
+   printf '%s' "$STEPS_CSV" > "$SGH_CACHE_DIR/steps"
    ```
    Per-issue caches: `$SGH_CACHE_DIR/issue-<NUM>.json` written once
    per issue in §E.2 (or after a hydration re-fetch) and reused by
@@ -494,6 +611,7 @@ authoritative.)
 
 DEFER_WORKTREE_CLEANUP=1
 SUPABUILD_TICKET=github:$ISSUE_NUM:$REPO_FULL
+SUPABUILD_STEPS=$STEPS_CSV
 ```
 
 The `DEFER_WORKTREE_CLEANUP=1` signal makes §A.6a skip its own
@@ -508,6 +626,18 @@ verdict, ship). HTML-comment fences preserve the user-written
 issue body above and below. Mirror failures log and are
 non-blocking — the plan still lives on disk and (post-§E.3e) on
 the PR.
+
+The `SUPABUILD_STEPS=$STEPS_CSV` signal carries the §E.0.6 checkbox
+selection through to §A.0.7. Read `STEPS_CSV` from
+`$SGH_CACHE_DIR/steps` immediately before constructing the prompt so
+parallel issue workers see a consistent value (the cache file is
+written once at §E.1 step 6 and never rewritten mid-run). Splice it
+literally — including the empty case (`SUPABUILD_STEPS=`), which
+§A.0.7 interprets as "all gates off". Do NOT omit the line when
+`STEPS_CSV` is empty: the *presence* of the line distinguishes
+"orchestrator opted out of every gate" from "no orchestrator signal
+at all" (which means default-all-on for direct `/supabuild build`
+runs).
 
 ### E.3d.5. Walkthrough upload
 
@@ -604,7 +734,9 @@ Print a tabular summary at the end:
 
 ```
 ## /supabuild github — done
-Project: #$PROJECT_NUM ($PROJECT_TITLE)
+Project:   #$PROJECT_NUM ($PROJECT_TITLE)
+Gates:     review, qa, security        ← from §E.0.6 (or "NONE" if all off)
+Skipped:   polish, walkthrough         ← inverse of Gates (omit row if empty)
 Processed: N issues
 Shipped:   M PRs opened
 Parked:    K issues with `Choose Design` (awaiting design pick)
@@ -617,3 +749,8 @@ Failed:    F issues moved back to Todo
 | 51  | Redesign empty state                 | parked    | (4 variants)    |
 | 53  | Migrate auth middleware              | failed    | (worktree kept) |
 ```
+
+The Gates / Skipped rows make it obvious post-hoc which verifications
+ran for this batch. If the user shipped with `--steps ""`, "Gates:
+NONE" is the loud reminder that the diffs in those PRs went out
+without QA, code review, security audit, polish, or walkthrough.

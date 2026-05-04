@@ -22,6 +22,16 @@ The user invokes `/supabuild <task description>` (the `build` keyword is also ac
   is **not** applied; use the name verbatim.
 - If no target branch is provided, the worktree + branch is left in place
   and the user is offered the standard cleanup menu (see §A.6).
+- `--steps <csv>` — explicit comma-separated set of verification gates
+  drawn from `review`, `qa`, `security`, `polish`, `walkthrough`.
+  Bypasses the §A.0.6 checkbox prompt for this run; canonical CSV is
+  cached to `git config supabuild.buildSteps` so the next prompt
+  defaults to it. `--steps ""` is valid and means "all gates off"
+  (implement-and-ship). When omitted, §A.0.6 prompts the user (or
+  reuses the cached value).
+- `--configure` — re-prompt the §A.0.6 checkboxes even when a cached
+  selection exists. Use to change which gates run without editing
+  `git config supabuild.buildSteps` by hand.
 
 ### A.0.5 Discovery — ask everything you need, once, up front
 
@@ -75,6 +85,206 @@ Skip the discovery pass when:
 
 Never ask trickle questions across multiple turns — it burns the
 user's patience and fragments the plan. One batch, then build.
+
+### A.0.6 Workflow step selection (checkbox prompt — §A owns this)
+
+§A is the engine. The destination adapters (§C linear, §E github) are
+just batchers — they ask this question **once per run** instead of
+once per issue, then pass the answer through to every §A invocation
+they spawn. The contract this section defines (`SUPABUILD_STEPS=<csv>`,
+the five tokens, the resolution order) is the single source of truth;
+adapters relay, they do not redefine.
+
+The Team Lead picks **which gates** apply to this build. A single
+`AskUserQuestion` multi-select renders the five toggleable stages from
+§A.4 / §A.4.5 / §A.5 / §A.5a as checkboxes. The resolved CSV is
+exported to the rest of the run via the shell variable
+`SUPABUILD_STEPS` (which §A.0.7 reads). Implementation rounds (§A.3)
+are NOT a step — they always run; "all gates off" still ships an
+implementation, just without verification.
+
+The five gates (one checkbox each):
+
+| Step          | Section  | What it does                                     |
+| ------------- | -------- | ------------------------------------------------ |
+| `review`      | §A.5     | Code Reviewer — full-diff correctness review     |
+| `qa`          | §A.5     | QA agent — runs tests/lint, exercises the build  |
+| `security`    | §A.4     | Security audit — Critical/High findings block    |
+| `polish`      | §A.4.5   | Polish & gap pass — edge cases, a11y, etc.       |
+| `walkthrough` | §A.5a    | UI walkthrough capture (only fires on UI diffs)  |
+
+#### Resolution order
+
+1. **Orchestrator already decided.** If the prompt body contains a
+   `SUPABUILD_STEPS=<csv>` line (set by §C linear or §E github), skip
+   the prompt entirely. The adapter's run-level checkbox already
+   batched the question; this build inherits the answer. Just export
+   the variable so §A.0.7 sees it and proceed.
+
+2. **`--steps <csv>` was passed on the build invocation.** Parse it
+   (lowercased, trimmed, comma-split), validate every token against
+   the table above (reject unknowns with a hard error), set
+   `SUPABUILD_STEPS` to the canonical sorted CSV, skip the prompt.
+   Persist:
+   ```bash
+   git config supabuild.buildSteps "$SUPABUILD_STEPS"
+   ```
+
+3. **`--configure` was passed.** Force the prompt regardless of any
+   cached value.
+
+4. **Cached value exists.** Read
+   `git config --get supabuild.buildSteps`. Treat empty string as a
+   valid cached "all off" answer; only treat exit-status non-zero as
+   "no cache". If present, default the checkbox state to that, then
+   prompt.
+
+5. **No cache.** Default all five checkboxes to checked (current
+   pre-feature behavior) and prompt.
+
+#### The prompt
+
+Single `AskUserQuestion` with one multi-select question:
+
+```
+Q: Which gates should run for this build?
+   (uncheck to skip; implementation rounds always run)
+
+Options:
+  [x] Code review (§A.5 Code Reviewer)
+  [x] QA agent (§A.5 — tests, lint, walkthrough hard-gate)
+  [x] Security audit (§A.4)
+  [x] Polish & gap pass (§A.4.5)
+  [x] UI walkthrough capture (§A.5a — only on UI diffs)
+```
+
+Initial check state per resolution order step 4 / 5. Multi-select.
+The user submits once; their selection becomes `SUPABUILD_STEPS`
+(canonical sorted CSV from the table's `Step` column).
+
+#### Persist + announce
+
+```bash
+git config supabuild.buildSteps "$SUPABUILD_STEPS"
+```
+
+Print a one-line resolved-set banner (and the inverse for clarity):
+
+```
+## /supabuild build — gates: review, qa, security
+(skipped: polish, walkthrough)
+```
+
+If `SUPABUILD_STEPS` is empty, print the same loud warning §A.0.7
+prints in rule 3 — but here, before any worktree is created, so the
+user has a chance to Ctrl-C if they unchecked everything by mistake:
+
+```
+## /supabuild build — gates: NONE
+heads up: all gates off — this build will ship after implementation
+rounds with no QA, code review, security audit, polish pass, or
+walkthrough capture. The Team Lead's own integration check is the
+only thing standing between the diff and the PR.
+```
+
+The user is allowed to ship with all gates off — supabuild does not
+veto. But it must be loud about it.
+
+#### Skip the prompt entirely when
+
+- The prompt body already has a `SUPABUILD_STEPS=` line (resolution
+  order step 1 — orchestrator path). The adapter (§C / §E) already
+  asked.
+- `--steps <csv>` was passed (resolution order step 2).
+
+In both cases, jump straight to §A.0.7 with the value already set.
+Adapter-driven runs never see the prompt — that's the whole point of
+batching at the adapter level.
+
+### A.0.7 Workflow step gates (parse `SUPABUILD_STEPS`)
+
+By the time control reaches this section, `SUPABUILD_STEPS` is either:
+- set by §A.0.6's prompt (direct `/supabuild build` path),
+- set by §A.0.6 from `--steps` flag or orchestrator signal (skipped
+  the prompt but still produced a value), or
+- absent entirely (legacy path: an orchestrator that hasn't been
+  updated to set the signal, or a programmatic invocation that bypassed
+  §A.0.6 — kept for backwards compatibility).
+
+Parse it once here, before the worktree gets created, so every later
+section can short-circuit cleanly.
+
+Recognized tokens (anything else is ignored with a warning):
+
+| Token         | Section  | What it gates                                |
+| ------------- | -------- | -------------------------------------------- |
+| `review`      | §A.5     | Code Reviewer dispatch                       |
+| `qa`          | §A.5     | QA agent dispatch + walkthrough hard-rule    |
+| `security`    | §A.4     | Security audit pass                          |
+| `polish`      | §A.4.5   | Polish & gap pass                            |
+| `walkthrough` | §A.5a    | UI capture script                            |
+
+#### Resolution rules
+
+1. **Line absent.** No `SUPABUILD_STEPS=` anywhere in the prompt body.
+   Default = all five enabled. Preserves behavior for direct
+   `/supabuild build` invocations and for orchestrators that do not
+   set the signal.
+2. **Line present, value non-empty.** Parse as the canonical step set.
+   Anything not in the table is dropped with a one-line warning.
+3. **Line present, value empty (`SUPABUILD_STEPS=`).** All five
+   disabled. The orchestrator has explicitly opted out of every gate.
+   Print this banner before §A.1:
+   > ⚠️  All verification gates disabled (`SUPABUILD_STEPS=`).
+   > Shipping after implementation rounds with only the Team Lead's
+   > integration check between rounds. No security audit, no polish
+   > pass, no QA, no code review, no walkthrough.
+
+Distinguishing rule 1 from rule 3 matters: a missing line is
+backwards-compatible default-on; an empty value is an explicit
+opt-out. Detect the difference by literal substring match on
+`SUPABUILD_STEPS=` in the prompt body.
+
+#### Helper for downstream sections
+
+```bash
+sb_step_enabled() {  # usage: sb_step_enabled review
+  case ",${SUPABUILD_STEPS-review,qa,security,polish,walkthrough}," in
+    *",$1,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+```
+
+Note the `${SUPABUILD_STEPS-...}` form (single dash, not `:-`): the
+default applies only when the variable is **unset**, not when it's set
+to an empty string. That is what carries rule 1 vs. rule 3 through to
+every call site.
+
+#### Plan implications
+
+§A.2's plan template still lists every non-negotiable acceptance
+criterion. When a gate is skipped, log the skip in `### Round log` at
+the moment the section would normally execute, with the form:
+
+```
+**A.4 security: SKIPPED via SUPABUILD_STEPS**
+**A.4.5 polish:   SKIPPED via SUPABUILD_STEPS**
+**A.5 QA+review: SKIPPED via SUPABUILD_STEPS**  (or partial: e.g. "review only")
+```
+
+Reviewers reading the plan on the ticket / PR see exactly which
+verifications ran and which the orchestrator opted out of. Do NOT
+remove the AC entries themselves from the plan — the user may still
+want to verify those criteria by hand on a no-gate run.
+
+#### Skip the parse when
+
+- The prompt body contains no `SUPABUILD_STEPS=` line at all (default
+  to all-on without comment — silent fallback for direct invocation).
+
+Apply the parse otherwise. Run it once at the top of §A; do not
+re-parse per round.
 
 ### A.1. Create the isolated worktree
 
@@ -672,6 +882,13 @@ another round is expected. Then call `sb_plan_update "$PLAN_BODY"`.
 
 ### A.4. Security audit pass
 
+**Skip-gate.** If `sb_step_enabled security` returns false, skip this
+section entirely. Append `**A.4 security: SKIPPED via
+SUPABUILD_STEPS**` under `### Round log`, call `sb_plan_update
+"$PLAN_BODY"`, and proceed to §A.4.5. The orchestrator (or
+`/supabuild build --steps "..."` if surfaced for direct use later)
+has explicitly opted out — don't second-guess it.
+
 Dispatch the Security agent (and `Blockchain Security Auditor` /
 `Compliance Auditor` if relevant) with this scope:
 
@@ -695,6 +912,13 @@ finding to `### Risks & mitigations` as `<finding> → <fix or status>`.
 Lows/Info don't need a plan entry. Call `sb_plan_update "$PLAN_BODY"`.
 
 ### A.4.5 Polish & gap pass — what is the user missing?
+
+**Skip-gate.** If `sb_step_enabled polish` returns false, skip this
+section. Append `**A.4.5 polish: SKIPPED via SUPABUILD_STEPS**`
+under `### Round log`, call `sb_plan_update "$PLAN_BODY"`, and
+proceed to §A.5. The §A.6 final report's "Polish pass" line should
+read "skipped via SUPABUILD_STEPS" rather than the empty-list
+acknowledgement.
 
 Before the QA gate, the Team Lead runs an explicit "what did we miss"
 pass. Users specify the obvious thing they want; the bar for shipping is
@@ -752,6 +976,24 @@ silently — even an empty list must be acknowledged.
 
 ### A.5. QA + code review gate
 
+**Skip-gate (whole section).** If neither `qa` nor `review` is in
+`SUPABUILD_STEPS` (i.e. `sb_step_enabled qa` AND `sb_step_enabled
+review` both return false), skip §A.5 entirely:
+- Append `**A.5 QA+review: SKIPPED via SUPABUILD_STEPS**` under
+  `### Round log`.
+- Render verdict APPROVED based on the Team Lead's own integration
+  check from §A.3 (the same check the Team Lead runs after every
+  round). If integration is broken, render NEEDS ANOTHER ROUND
+  instead and loop back to §A.3 — the verdict still happens, just
+  without external agents.
+- §A.5a (capture script) and the UI walkthrough hard-gate below also
+  no-op in this case (no QA → no QA-blocking precondition).
+- Call `sb_plan_update "$PLAN_BODY"` with the round-log entry, flip
+  status to `approved`, and proceed to §A.5.5 / §A.6.
+
+If only one of `qa` / `review` is enabled, the section runs but
+dispatches just that one agent — see Step 2 below.
+
 **Step 1 — UI-diff detection (do this first, before dispatching anyone).**
 
 ```bash
@@ -760,10 +1002,18 @@ UI_DIFF=$(cd "$WT_PATH" && git diff --name-only "$BASE_SHA"..HEAD \
   | head -1)
 ```
 
-If `$UI_DIFF` is non-empty → this is UI work. The Team Lead **must**
-execute the §A.5a capture script *inline* (not delegate to QA) before or
-in parallel with QA dispatch. Capture is mechanical, not judgment —
-the QA agent's job is to render a verdict, not to run shell scripts.
+If `$UI_DIFF` is non-empty → this is UI work. **If `sb_step_enabled
+walkthrough` returns true**, the Team Lead **must** execute the §A.5a
+capture script *inline* (not delegate to QA) before or in parallel
+with QA dispatch. Capture is mechanical, not judgment — the QA
+agent's job is to render a verdict, not to run shell scripts.
+
+If `walkthrough` is NOT enabled, skip §A.5a entirely even when
+`$UI_DIFF` is non-empty. Append `**A.5a walkthrough: SKIPPED via
+SUPABUILD_STEPS**` under `### Round log` for the audit trail. The
+hard-gate in Step 3 below also no-ops in this case — the orchestrator
+has explicitly traded visual proof for speed and the Team Lead must
+not synthesize one.
 
 > ## ⛔ The diff regex is the ONLY test for "is this UI work?"
 >
@@ -816,22 +1066,40 @@ the QA agent's job is to render a verdict, not to run shell scripts.
 
 **Step 2 — dispatch `Code Reviewer` and the chosen QA agent in parallel.**
 
-- **Code Reviewer** scope: full diff `$BASE_SHA..HEAD`. Check correctness,
-  maintainability, idiomatic use of the chosen stack, dead code, error
-  handling at boundaries (don't add fallbacks for impossible states),
-  comments only where the *why* is non-obvious, no over-engineering, no
+Dispatch each only if its step is enabled:
+
+- **Code Reviewer** (only when `sb_step_enabled review`). Scope: full
+  diff `$BASE_SHA..HEAD`. Check correctness, maintainability,
+  idiomatic use of the chosen stack, dead code, error handling at
+  boundaries (don't add fallbacks for impossible states), comments
+  only where the *why* is non-obvious, no over-engineering, no
   half-finished work.
-- **QA agent** scope: actually exercise the build where possible. Run
-  the project's test suite, lint, typecheck if configured. For UI,
-  follow the golden path and a few edge cases. Distinguish
-  infra-skip (tooling missing) from genuine fail (code is wrong).
-  Return concrete, evidence-backed findings — no fantasy approvals.
+- **QA agent** (only when `sb_step_enabled qa`). Scope: actually
+  exercise the build where possible. Run the project's test suite,
+  lint, typecheck if configured. For UI, follow the golden path and
+  a few edge cases. Distinguish infra-skip (tooling missing) from
+  genuine fail (code is wrong). Return concrete, evidence-backed
+  findings — no fantasy approvals.
+
+If only one of the two is enabled, dispatch that one alone (no
+parallel — single tool call). Log the partial in the round log:
+`**A.5 QA+review: review-only via SUPABUILD_STEPS**` (or
+`qa-only`). The Team Lead's verdict at the bottom of §A.5 still
+runs, but it weighs only the report(s) it actually got.
 
 **Step 3 — APPROVED precondition (hard gate).**
 
-When `$UI_DIFF` is non-empty, the Team Lead **CANNOT** output APPROVED
-unless `$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}` exists
-on disk and is ≥50KB. No exceptions, no waivers, no "I checked it
+This hard gate fires only when **`sb_step_enabled walkthrough` AND
+`$UI_DIFF` is non-empty**. If `walkthrough` is disabled by
+`SUPABUILD_STEPS`, the Team Lead may render APPROVED on UI diffs
+without an evidence file — the orchestrator has explicitly traded
+visual proof for speed, and the §A.6a `## Walkthrough` section just
+records "skipped via SUPABUILD_STEPS" in place of the artifact list.
+
+When the gate fires (`walkthrough` enabled AND `$UI_DIFF` non-empty):
+the Team Lead **CANNOT** output APPROVED unless
+`$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}` exists on
+disk and is ≥50KB. No exceptions, no waivers, no "I checked it
 manually". If the file is missing or undersized:
 - Re-run the §A.5a capture script inline once more with verbose logging.
 - If still missing, the verdict is **NEEDS ANOTHER ROUND** with the
@@ -847,14 +1115,19 @@ whether the build worked until they pulled and ran it themselves.
 
 ### A.5a. Capture script (Team Lead runs this inline when `$UI_DIFF` is non-empty)
 
-When `$UI_DIFF` from §A.5 is non-empty, the **Team Lead executes this
-script inline** (do not delegate to the QA agent — its dispatch prompt
-won't carry the script verbatim, and past runs have silently skipped
-capture as a result). The artifact at
-`$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}` is a hard
-APPROVED precondition per §A.5 step 3. This replaces the post-APPROVED
-§C.3d.5 boot in the linear flow and the §A.5.5 still-only
-flow.
+**Skip-gate.** If `sb_step_enabled walkthrough` returns false, this
+section is a no-op regardless of `$UI_DIFF`. §A.5 Step 1 already
+logged the skip — do not run the script, do not produce the
+artifact, and the §A.5 Step 3 hard gate will not fire.
+
+When `$UI_DIFF` from §A.5 is non-empty AND `walkthrough` is enabled,
+the **Team Lead executes this script inline** (do not delegate to
+the QA agent — its dispatch prompt won't carry the script verbatim,
+and past runs have silently skipped capture as a result). The
+artifact at `$WT_PATH/.supabuild/evidence/00-walkthrough.{webm,mp4}`
+is a hard APPROVED precondition per §A.5 step 3. This replaces the
+post-APPROVED §C.3d.5 boot in the linear flow and the §A.5.5
+still-only flow.
 
 **Capture is `playwright-cli` against a live dev server.** Language-
 agnostic by design — works for PHP/Laravel, Django, Rails, Go, Bun,
@@ -1022,11 +1295,21 @@ walkthrough remains the primary verification.**
   blocker. §A.5.5 and §C.3d.5 reuse the artifact produced here; they
   do not re-boot the server.
 
-The Team Lead reads both reports and renders a verdict:
+The Team Lead reads whichever reports actually ran (per Step 2's
+per-step gating) and renders a verdict:
 
-- **APPROVED** — every non-negotiable met, no Critical/High security
-  issues, code review is clean (or only nits the Team Lead is willing to
-  ship), QA passes. Proceed to §A.6.
+- **APPROVED** — every non-negotiable met. The required conditions
+  scale with `SUPABUILD_STEPS`:
+  - `security` enabled → no Critical/High security issues.
+  - `review` enabled → code review is clean (or only nits the Team
+    Lead is willing to ship).
+  - `qa` enabled → QA passes.
+  - `walkthrough` enabled AND `$UI_DIFF` non-empty → walkthrough
+    artifact present and ≥50KB (Step 3 hard-gate).
+  - Steps that are disabled by `SUPABUILD_STEPS` simply don't apply;
+    the Team Lead notes the skip in the §A.6 final report and
+    proceeds.
+  Proceed to §A.6.
 - **NEEDS ANOTHER ROUND** — the Team Lead writes a tight remediation list
   (specific files, specific issues, specific agents to dispatch) and
   loops back to §A.3 with that scope only. Do not rewrite the world; fix
@@ -1090,20 +1373,31 @@ When the verdict is APPROVED, the Team Lead produces a **final report**:
 **Worktree:** $WT_PATH
 **Commits:** <count>, <range>
 **Rounds run:** <n>
+**Gates run:** review, qa, security, polish, walkthrough  ← from SUPABUILD_STEPS (omit row if signal absent)
+**Gates skipped:** <inverse list>                          ← omit row if empty
 
 ### What was built
 - <bullet>
 - <bullet>
 
 ### Security audit
-- <findings + how resolved>
+- <findings + how resolved>     ← or "skipped via SUPABUILD_STEPS" if `security` off
+
+### Polish pass
+- <gap list summary>            ← or "skipped via SUPABUILD_STEPS" if `polish` off
 
 ### QA + code review
-- <findings + how resolved>
+- <findings + how resolved>     ← or "skipped via SUPABUILD_STEPS" if both `qa` and `review` off; partial when only one ran
 
 ### Known limitations / follow-ups
 - <bullet> (if any)
 ```
+
+When sections were skipped via `SUPABUILD_STEPS`, do **not** drop
+their headers — keep them with a single line stating the skip and
+which signal triggered it. Reviewers reading the report should be
+able to see at a glance which gates ran without cross-referencing
+the round log.
 
 Then choose the ship path based on `$TARGET_BRANCH`:
 
@@ -1129,6 +1423,21 @@ If §A.5.5 was skipped ("no visual surface" or "not captured: <reason>"),
 state that explicitly in the same section instead of omitting it. The
 orchestrator (§C.3d.5, or a human running standalone) is responsible
 for uploading the actual files to Linear / a PR comment.
+
+If `walkthrough` was disabled via `SUPABUILD_STEPS`, the section
+becomes:
+
+```markdown
+## Walkthrough
+
+Walkthrough capture was disabled for this run via `SUPABUILD_STEPS`
+(orchestrator opted out of visual proof). No video or screenshots
+were captured. Reviewer should manually verify the UI surface before
+merging if needed.
+```
+
+State the skip explicitly — silently omitting the section would let
+"no walkthrough" look indistinguishable from "we forgot".
 
 1. Detect remote: `git -C "$REPO_ROOT" remote get-url origin`. If no
    `origin`, abort the push and tell the user how to add one — leave the
@@ -1273,8 +1582,14 @@ Repair is the user's call; this skill does not auto-heal.
 
 ### A. Hard rules (build mode)
 
-- The Team Lead never claims completion without the §A.5 QA + code review
-  passing. "I think it works" is not approval.
+- The Team Lead never claims completion without the §A.5 QA + code
+  review passing **when those gates are enabled in
+  `SUPABUILD_STEPS`**. "I think it works" is not approval. When the
+  orchestrator has explicitly disabled `qa` and/or `review`, the
+  round log MUST name the skipped gates and the §A.6 final report
+  MUST mark the corresponding sections as "skipped via
+  SUPABUILD_STEPS" so the user can see exactly what didn't run. The
+  Team Lead never silently skips — only conditionally skips.
 - Loop cap is 3 rounds. After that, escalate to the user.
 - All file writes go under `$WT_PATH`. Never edit the main working tree
   during a build run.

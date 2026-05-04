@@ -39,6 +39,13 @@ Optional flags:
   (sequential).** Pass an explicit number to parallelize. Warn if
   effective concurrency exceeds 5 (shared `gh`/Linear rate limits)
   but do not cap.
+- `--steps <csv>` — explicit comma-separated set of verification gates
+  (`review`, `qa`, `security`, `polish`, `walkthrough`). Bypasses the
+  §C.0.6 checkbox prompt and passes through to §A as
+  `SUPABUILD_STEPS=<csv>`. Empty value disables every gate. See
+  §A.0.6 for the canonical token table.
+- `--configure` — re-prompt the §C.0.6 checkboxes even if a cached
+  selection exists in `git config supabuild.linearSteps`.
 - `--dry-run` — list tickets that would be processed and stop.
 
 **No confirmation prompt. Ever.** If invoked with no flags, just
@@ -48,7 +55,10 @@ then **immediately proceed to §C.1 preflight and §C.2 ticket
 processing in the same response, without asking the user "proceed?",
 "yes/no?", or any other confirmation phrasing**. Asking is a bug —
 the user already confirmed by invoking the skill. Only stop early if
-`--dry-run` is set or preflight (§C.1) fails.
+`--dry-run` is set or preflight (§C.1) fails. The §C.0.6
+step-selection prompt is *configuration*, not run confirmation: it
+asks once per run (cached default makes reruns one keystroke), is
+silent when `--steps` is passed, and never gates the queue itself.
 
 ### Linear interface — `@schpet/linear-cli`
 
@@ -71,6 +81,72 @@ Canonical commands used below:
 Only fall back to `linear api '<graphql>'` (the CLI's raw-API escape
 hatch) if a needed field is not exposed by a structured subcommand.
 **Never** call `curl https://api.linear.app/graphql` directly.
+
+### C.0.6. Workflow step selection (run-level batcher for §A.0.6)
+
+§C is a destination adapter — its only job is to feed §A one ticket at
+a time. The verification-step contract (`SUPABUILD_STEPS=<csv>`, the
+five tokens, what each gates) is owned by §A.0.6 and §A.0.7. This
+section is the **run-level batcher** of that prompt: ask once per
+`/supabuild linear` run instead of once per ticket, then relay the
+answer to every per-ticket §A invocation via the build prompt body.
+
+For the canonical token table, prompt copy, and parsing rules, see
+§A.0.6. This section does not redefine any of that — it just decides
+*when* to ask and where to cache the answer.
+
+#### Resolution order (mirrors §A.0.6 with linear-scoped cache)
+
+1. **`--steps <csv>` was passed.** Parse, validate, set
+   `STEPS_CSV` to canonical sorted CSV, skip the prompt. Persist:
+   ```bash
+   git config supabuild.linearSteps "$STEPS_CSV"
+   ```
+2. **`--configure` was passed.** Force the prompt regardless of
+   cached value.
+3. **Cached value exists.** Read
+   `git config --get supabuild.linearSteps`. Empty string is a valid
+   "all off" cache. Default checkbox state to that, then prompt.
+4. **No cache.** Default all five checkboxes to checked, then prompt.
+
+#### The prompt
+
+Same `AskUserQuestion` multi-select as §A.0.6, but framed for the
+batch:
+
+```
+Q: Which gates should run for every ticket this run?
+   (uncheck to skip; implementation rounds always run)
+```
+
+Persist the user's choice:
+```bash
+git config supabuild.linearSteps "$STEPS_CSV"
+```
+
+Print the run banner:
+```
+## /supabuild linear — gates: review, qa, security
+(skipped: polish, walkthrough)
+```
+
+If `STEPS_CSV` is empty:
+```
+## /supabuild linear — gates: NONE
+heads up: all gates off — every ticket will ship after implementation
+rounds with no QA, code review, security audit, polish pass, or
+walkthrough capture. The Team Lead's own integration check is the
+only thing standing between each diff and its PR.
+```
+
+#### Relay to §A
+
+The resolved CSV is stashed in `STEPS_CSV` and spliced into every
+per-ticket build prompt at §C.3c (see the build prompt template
+there) as `SUPABUILD_STEPS=$STEPS_CSV`. Splice the line literally,
+including the empty case — `SUPABUILD_STEPS=` is the explicit
+"orchestrator opted out of every gate" signal that §A.0.7
+distinguishes from "no orchestrator signal at all".
 
 ### C.1. Preflight
 
@@ -779,6 +855,18 @@ Push policy for this run (non-negotiable):
   ```
   SUPABUILD_TICKET=linear:$IDENT
   ```
+- **Workflow step gates (`SUPABUILD_STEPS`).** Splice the §C.0.6
+  resolved CSV into the prompt body literally — including the empty
+  case (`SUPABUILD_STEPS=`), which §A.0.7 interprets as "all gates
+  off". Do NOT omit the line when `STEPS_CSV` is empty: the
+  *presence* of the line distinguishes "orchestrator opted out of
+  every gate" from "no orchestrator signal at all" (which would
+  default §A.0.7 to all-on for backwards compatibility). §A.0.6
+  detects this line and skips its own checkbox prompt — the §C.0.6
+  batcher already asked. Include this single line in the prompt body:
+  ```
+  SUPABUILD_STEPS=$STEPS_CSV
+  ```
 - **"No UI surface mutation" is NOT a valid waiver reason.** The
   capture trigger is the §A.5 step-1 diff regex, not the agent's
   judgment about whether the change "feels visual." Conditional
@@ -1327,6 +1415,8 @@ limits but do not cap — the user asked for it.
 
 ```
 ## /supabuild linear — summary
+Gates run:    review, qa, security        ← from §C.0.6 (or "NONE" if all off)
+Gates skipped: polish, walkthrough        ← inverse; omit row if empty
 Processed: N tickets
 
 | Ticket   | Verdict          | PR / Next step                                | Linear comment | Rounds |
