@@ -85,51 +85,36 @@ If you want the full picture, read [`plugins/supabuild/skills/supabuild/SKILL.md
 
 ## Token-saving usage
 
-Five rules of thumb that cut the bill 40–60% with no loss of safety
-on the workloads that actually need a Team Lead. Apply the ones that
-match your shape:
+Running a multi-agent build through `/supabuild` — plan, dispatch 5
+specialists, security pass, QA loop, ship — costs a fraction of what
+the same flow costs if you assemble it from raw Claude turns. None of
+it is a knob you flip. It's all baked in.
 
-1. **Pre-bake an exhaustive brief.** When the prompt has acceptance
-   criteria, target branch, and constraints up front, §A.0.5 skips
-   the discovery question batch entirely. Shape:
-   ```
-   /supabuild add OAuth login button. ACs: 1) button on /login renders 2) clicking opens Google consent 3) successful auth lands on /dashboard. Out of scope: GitHub provider. Constraints: reuse existing useAuth hook. --branch develop
-   ```
+Under the hood:
 
-2. **Cache `--steps` per task type** (auto-persisted to
-   `git config supabuild.buildSteps`):
-   - Backend / API / migration → `--steps "review,qa,security"`
-   - Pure refactor → `--steps "review,qa"`
-   - UI tweak → `--steps "review,qa,walkthrough"`
-   - Throwaway spike → `--steps ""` (Team Lead integration check only)
+- **Right model for the role.** Mechanical roles run on Haiku,
+  implementers on Sonnet, only the orchestrator runs on Opus. Every
+  subagent gets the cheapest model that can do its job, not the most
+  powerful one available.
+- **Cache-friendly prompts.** Subagent dispatches share a stable
+  prefix so the prompt cache actually hits across the dozen-plus
+  subagent turns a single build produces.
+- **Delta-only remediations.** Round 2+ ships a single remediator
+  scoped to just the findings, instead of re-running the whole
+  specialist roster against the full diff.
+- **Lazy-loaded phases.** Walkthrough capture and the ship/PR
+  sequence are only loaded into context when those phases actually
+  fire. A backend-only build never reads a byte of the Playwright
+  instructions.
+- **No polluted retries.** Each build runs in a clean worktree on
+  its own branch, so failure modes that normally cost an extra round
+  of context — agents stepping on each other's edits, rebuilding
+  state after a bad merge — just don't happen.
 
-3. **Exit `/supabuild` for tiny edits.** A 3-line typo fix doesn't
-   need 2–10 specialists, a security pass, and a walkthrough. Use a
-   plain Claude turn or a direct edit. Reach for `/supabuild` when
-   the change spans ≥2 files or carries real risk.
-
-4. **Cap design variants at 2–3.** State the axes you care about
-   ("minimal vs expressive") so the variants are maximally
-   informative rather than just numerous:
-   ```
-   /supabuild design redesign empty state. Generate exactly 2: one minimal, one expressive.
-   ```
-
-5. **Pre-curate Linear / GitHub backlogs.** Burndown cost scales
-   linearly with ticket count × enabled gates. Trim noise tickets
-   from the `Todo` column before kicking off, and pass per-batch
-   gates the same way:
-   ```
-   /supabuild linear --steps "review,qa"
-   ```
-
-The plugin itself is also tuned for low-token operation: agents are
-tiered (Haiku for mechanical roles, Sonnet for implementers, Opus
-only for orchestration); subagent prompts use a stable cache-friendly
-prefix (§A.3.1); round 2+ remediations dispatch a single Remediator
-with a delta prompt (§A.3.2); and `build.md` lazy-loads the
-walkthrough capture (§A.5a) and ship sequence (§A.6) only when those
-phases actually fire.
+Net effect: roughly 40–60% fewer tokens than the same multi-agent
+build done as a free-form Claude conversation, without giving up
+safety or completeness. You don't configure any of it — running
+`/supabuild` is the configuration.
 
 ## Caveats
 

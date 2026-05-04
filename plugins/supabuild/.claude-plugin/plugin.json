@@ -1,6 +1,6 @@
 {
   "name": "supabuild",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Orchestrates multi-agent builds, parallel design variants, Linear backlog burndown, and isolated worktree tasks — with a security audit and QA gate. Single /supabuild slash command with mode routing.",
   "author": {
     "name": "Jae Lee",
