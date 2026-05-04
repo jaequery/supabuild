@@ -119,8 +119,8 @@ exposed via the structured subcommands above. **Never** call
 
 ### E.0.5. First-run project setup
 
-The Projects v2 board and the four labels (`Building`, `Testing`,
-`Choose Design`, `design-selected`) must exist before processing.
+The Projects v2 board and the four labels (`building`, `testing`,
+`choose-design`, `design-selected`) must exist before processing.
 On first invocation in a repo, set them up automatically and
 idempotently — re-running on a configured repo is a no-op.
 
@@ -222,7 +222,7 @@ idempotently — re-running on a configured repo is a no-op.
 5. **Create the four labels** in the repo if missing. Idempotent:
    ```bash
    EXISTING=$(gh label list --repo "$REPO_FULL" --json name -q '.[].name' | tr '\n' '|')
-   for spec in "Building:0e8a16" "Testing:fbca04" "Choose Design:d93f0b" "design-selected:0075ca"; do
+   for spec in "building:0e8a16" "testing:fbca04" "choose-design:d93f0b" "design-selected:0075ca"; do
      name="${spec%%:*}"; color="${spec##*:}"
      case "|$EXISTING|" in
        *"|$name|"*) ;;
@@ -238,7 +238,7 @@ idempotently — re-running on a configured repo is a no-op.
    Project:  #$PROJECT_NUM ($PROJECT_TITLE)
    URL:      <project URL from step 2 / 3>
    Status:   Todo / In Progress / In Review / Done
-   Labels:   Building, Testing, Choose Design, design-selected
+   Labels:   building, testing, choose-design, design-selected
    Workflow: Each shipped PR includes `Closes #N`, so merging it
              auto-closes the issue. Projects v2 enables the
              "Auto-close issue → Done" workflow by default for
@@ -453,7 +453,7 @@ For each issue in queue, in order (or in parallel batches if
 
 2. **Announce + transition Todo → In Progress** (§E.3-state):
    - Move Status to In Progress.
-   - Add `Building` label (BUILD route) or keep no label yet
+   - Add `building` label (BUILD route) or keep no label yet
      (DESIGN_EXPLORATION).
    - Comment on the issue:
      ```
@@ -473,15 +473,15 @@ For each issue in queue, in order (or in parallel batches if
    §E.3c.
 
 5. **On §A APPROVED + PR opened** (§E.3e):
-   - Swap labels: `Building` → `Testing` → eventually neither.
+   - Swap labels: `building` → `testing` → eventually neither.
    - Optionally upload walkthrough/screenshots reference (§E.3d.5).
    - Move Status In Progress → In Review.
-   - Strip `Testing` label.
+   - Strip `testing` label.
    - Final comment with PR link.
 
 6. **On §A FAILED**:
    - Move Status In Progress → Todo.
-   - Strip `Building` (do NOT add `Testing`).
+   - Strip `building` (do NOT add `testing`).
    - Comment with failure reason and the partial worktree path so
      the user can finish by hand.
 
@@ -537,7 +537,7 @@ Mirror §C.3-design:
      - Variant slug + branch name
      - 2–3 inline screenshots (link to images committed to the
        variant branch under `.supabuild/design-shots/`)
-   - Add `Choose Design` label, remove `Building`.
+   - Add `choose-design` label, remove `building`.
    - Move Status back to `Todo`.
    - Final comment:
      ```
@@ -694,7 +694,7 @@ fi
 # Final state move
 gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" \
   --field-id "$STATUS_FIELD_ID" --single-select-option-id "$REVIEW_OPT_ID"
-gh issue edit "$ISSUE_NUM" --repo "$REPO_FULL" --remove-label "Testing"
+gh issue edit "$ISSUE_NUM" --repo "$REPO_FULL" --remove-label "testing"
 gh issue comment "$ISSUE_NUM" --repo "$REPO_FULL" --body-file <(cat <<EOF
 ### 🔗 PR opened
 $PR_URL
@@ -710,7 +710,7 @@ On §A FAILED:
 ```bash
 gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" \
   --field-id "$STATUS_FIELD_ID" --single-select-option-id "$TODO_OPT_ID"
-gh issue edit "$ISSUE_NUM" --repo "$REPO_FULL" --remove-label "Building"
+gh issue edit "$ISSUE_NUM" --repo "$REPO_FULL" --remove-label "building"
 gh issue comment "$ISSUE_NUM" --repo "$REPO_FULL" --body-file <(cat <<EOF
 ### ⚠️ build did not pass the QA gate
 $FAILURE_REASON
@@ -739,7 +739,7 @@ Gates:     review, qa, security        ← from §E.0.6 (or "NONE" if all off)
 Skipped:   polish, walkthrough         ← inverse of Gates (omit row if empty)
 Processed: N issues
 Shipped:   M PRs opened
-Parked:    K issues with `Choose Design` (awaiting design pick)
+Parked:    K issues with `choose-design` (awaiting design pick)
 Failed:    F issues moved back to Todo
 
 | #   | Title                                | Outcome   | PR              |

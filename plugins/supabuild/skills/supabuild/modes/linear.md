@@ -327,7 +327,7 @@ the running results table after each ticket finishes.
 Before any branch resolution or dispatch, route the ticket. There
 are three possible outcomes per ticket; pick the first that matches:
 
-1. **AWAITING_HUMAN** — ticket has the label `Choose Design` (any
+1. **AWAITING_HUMAN** — ticket has the label `choose-design` (any
    case) **AND does NOT have `design-selected`**. A previous
    `/supabuild linear` run already produced variants and the
    human hasn't signaled a pick yet. Skip this ticket entirely:
@@ -336,7 +336,7 @@ are three possible outcomes per ticket; pick the first that matches:
    results table and continue to the next ticket.
 
    The `AND NOT design-selected` clause matters: a human who adds
-   `design-selected` *without* removing `Choose Design` (a common,
+   `design-selected` *without* removing `choose-design` (a common,
    forgivable slip) would otherwise be stuck here forever. The
    `design-selected` label is the stronger signal — if it's
    present, the human has picked, period.
@@ -500,8 +500,8 @@ back to `linear api` with `issueUpdate { labelIds }` after fetching
 the team's label list (`team(id:$key){ labels{ nodes{ id name } } }`),
 creating the label via `issueLabelCreate` if it doesn't exist on
 the team yet, and writing the merged `labelIds` set. Labels created
-by this skill: `Designing`, `Choose Design`, `design-explored`,
-`design-selected`, `Building`, `Testing`. Label add/remove is
+by this skill: `designing`, `choose-design`, `design-explored`,
+`design-selected`, `building`, `testing`. Label add/remove is
 best-effort — log a warning on failure and continue; never block
 dispatch on a label mutation.
 
@@ -521,14 +521,14 @@ The ticket needs divergent variants before anyone writes code. We
 hand it to the §B design flow (which wraps the variant build and
 critique loop), let it post variant screenshots back to the ticket
 (via the embedded Linear-aware design helper), then return the
-ticket to **Todo** with `Choose Design` + `design-explored` labels
+ticket to **Todo** with `choose-design` + `design-explored` labels
 so a human can pick. The next `/supabuild linear` run will see
 the `design-explored` label (or `design-selected` once the human
 picks) and skip straight to BUILD.
 
 State is already "In Progress" — §C.3-state moved it before §C.3-announce.
 
-1. **Add label `Designing`.** Remove `needs-design` if present.
+1. **Add label `designing`.** Remove `needs-design` if present.
 2. **Post the "starting design" comment** via `--body-file`:
    ```markdown
    ### 🎨 design exploration started
@@ -541,9 +541,9 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
      with screenshots and a per-variant git branch
      (`supabuild-design/<slug>-<variant>`).
    - When done, I'll move this ticket back to **Todo** with the
-     **`Choose Design`** label. Pick a variant by leaving a
+     **`choose-design`** label. Pick a variant by leaving a
      comment, then add the **`design-selected`** label (or just
-     remove `Choose Design`) and re-run `/supabuild linear` —
+     remove `choose-design`) and re-run `/supabuild linear` —
      the next run will skip design and go straight to the §A
      build flow with the chosen direction in context.
    ```
@@ -576,7 +576,7 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
    - **Add label `design-explored`** (per the label helper's
      exception clause: this label MUST stick — retry once on
      failure, surface loudly if it can't be written).
-   - Remove label `Designing`. Add label `Choose Design`.
+   - Remove label `designing`. Add label `choose-design`.
    - Move state → **Todo**. Resolve explicitly:
      ```bash
      TODO_STATE=$(echo "$STATES_JSON" \
@@ -604,7 +604,7 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
      **To proceed:**
      1. Decide which variant to ship.
      2. Either add the **`design-selected`** label, or remove
-        the **`Choose Design`** label (either signals "pick
+        the **`choose-design`** label (either signals "pick
         recorded" — both work).
      3. Re-run `/supabuild linear` — this ticket will route
         straight to the §A build flow and the build team
@@ -622,8 +622,8 @@ State is already "In Progress" — §C.3-state moved it before §C.3-announce.
 
 **Final consistency sweep at the end of §C.3-design** (success path):
 re-fetch the ticket and confirm the label set matches expectations
-(`design-explored` ✓, `Choose Design` ✓, `Designing` ✗, state =
-`Todo`). If any label or state is inconsistent (e.g., `Designing`
+(`design-explored` ✓, `choose-design` ✓, `designing` ✗, state =
+`Todo`). If any label or state is inconsistent (e.g., `designing`
 still attached because removal failed earlier), retry the failing
 mutation once. This catches the partial-failure case where step 4
 half-completed.
@@ -631,7 +631,7 @@ half-completed.
 **Failure path:** If the §B design flow itself escalates or fails,
 treat it like a BUILD failure: comment the blocker, move state
 back to **Todo** (using the same explicit Todo-only resolution as
-above), remove `Designing`, do NOT add `Choose Design` or
+above), remove `designing`, do NOT add `choose-design` or
 `design-explored` (nothing to choose, didn't actually explore),
 record verdict `DESIGN_FAILED`.
 
@@ -905,7 +905,7 @@ Slug for the worktree path: `$IDENT` lowercased (e.g. `eng-123`).
 The §A flow adds its own timestamp suffix to the worktree directory
 even when `--working-branch` overrides the branch name.
 
-#### C.3b. Add the `Building` label + post a "starting" comment
+#### C.3b. Add the `building` label + post a "starting" comment
 
 State is already "In Progress" — §C.3-state moved it before §C.3-announce.
 This section only handles the BUILD-specific label and the "build
@@ -913,11 +913,11 @@ started" status comment; do NOT re-resolve or re-issue the state
 transition here (it's redundant and could fight a human who manually
 nudged the state in the meantime).
 
-**Add the `Building` label** (best-effort, per the label
+**Add the `building` label** (best-effort, per the label
 helper). If the route was DESIGN_EXPLORATION → BUILD on this
 re-run, the ticket may also carry `design-selected` and/or
-`Choose Design` — leave `design-selected` in place (it's a
-historical record) and remove `Choose Design` if it's still
+`choose-design` — leave `design-selected` in place (it's a
+historical record) and remove `choose-design` if it's still
 present (the human signaled by re-running this skill).
 
 Then post a status comment so non-terminal stakeholders can follow
@@ -926,14 +926,14 @@ along. Write to a temp file and use `--body-file`:
 ```markdown
 ### 🛠️ build started
 
-- **Label:** `Building`
+- **Label:** `building`
 - **Working branch:** `$WORKING_BRANCH`
 - **Target (PR base):** `$RESOLVED`
 - **Worktree slug:** `$IDENT_LOWER`
 - **Mode:** §A build (plan → parallel specialist build → security audit → QA + code review, looping until clean)
 - **Clean-code bar:** reuse existing patterns, minimal diff, no dead code/TODOs/console.logs.
 
-Next stops: `Testing` label during QA capture, then PR open + state → `In Review`.
+Next stops: `testing` label during QA capture, then PR open + state → `In Review`.
 ```
 
 ```bash
@@ -997,7 +997,7 @@ ESCALATED, or FAILED.
 >        "no UI surface" instead of skipping silently.
 > 4. [ ] §C.3e Linear comment posted (URL captured) AND state
 >        transitioned (`In Review` for APPROVED, `Todo` for
->        ESCALATED/FAILED). Phase labels (`Building`, `Testing`)
+>        ESCALATED/FAILED). Phase labels (`building`, `testing`)
 >        cleaned up.
 >
 > If ANY box is unticked, you are not allowed to:
@@ -1028,8 +1028,8 @@ rounds run. Also capture `$ISSUE_ID` (UUID) and `$TEAM_ID` (UUID) from
 
 #### C.3d.5. Visual asset reuse (UX/design tickets only)
 
-**Before locating/capturing, swap labels: remove `Building`, add
-`Testing`** (best-effort, per the label helper). Post a one-line
+**Before locating/capturing, swap labels: remove `building`, add
+`testing`** (best-effort, per the label helper). Post a one-line
 comment so observers see the phase change:
 
 ```markdown
@@ -1038,7 +1038,7 @@ comment so observers see the phase change:
 Build round complete. Running the Playwright test suite, then uploading
 the walkthrough video + up to 3 step stills (so this ticket renders
 them inline) plus the full Playwright HTML report as a zip download.
-Label moved `Building` → `Testing`.
+Label moved `building` → `testing`.
 ```
 
 **Capture happens during QA in §A.5a artifact.** This section
@@ -1288,8 +1288,8 @@ write the comment body to a temp file and pass `--body-file` so
 multi-line markdown survives shell quoting.
 
 - **APPROVED + PR opened:**
-  **First, clean up phase labels** (best-effort): remove `Testing`
-  and remove `Building` if it's still attached. Do not add a new
+  **First, clean up phase labels** (best-effort): remove `testing`
+  and remove `building` if it's still attached. Do not add a new
   phase label here — the workflow state (`In Review`, set below)
   is the signal for this stage.
   ```bash
@@ -1380,7 +1380,7 @@ multi-line markdown survives shell quoting.
   `_Playwright report not captured: <reason>_`. If §C.3d.5 was skipped
   (not a UX/design ticket), omit the section entirely.
 - **ESCALATED or FAILED:**
-  Remove `Testing` and `Building` labels first (best-effort).
+  Remove `testing` and `building` labels first (best-effort).
   ```bash
   linear issue comment add "$IDENT" --body-file /tmp/dda-comment-$IDENT.md
   linear issue update  "$IDENT" --state "Todo"
@@ -1497,8 +1497,8 @@ Processed: N tickets
 |----------|------------------|-----------------------------------------------|----------------|--------|
 | ENG-123  | APPROVED         | https://github.com/.../pull/45                | linear.app/.../comment-abc123 | 1      |
 | ENG-130  | ESCALATED        | (no PR — see worktree)                        | linear.app/.../comment-def456 | 3      |
-| ENG-141  | DESIGN_HANDOFF   | label `Choose Design` — pick variant          | linear.app/.../comment-ghi789 | —      |
-| ENG-142  | AWAITING_HUMAN   | already in `Choose Design` — skipped          | (none — §C.3-route skip) | —      |
+| ENG-141  | DESIGN_HANDOFF   | label `choose-design` — pick variant          | linear.app/.../comment-ghi789 | —      |
+| ENG-142  | AWAITING_HUMAN   | already in `choose-design` — skipped          | (none — §C.3-route skip) | —      |
 | ENG-150  | DESIGN_FAILED    | /supabuild design errored — see ticket comment | linear.app/.../comment-jkl012 | —      |
 
 Worktrees still on disk:
@@ -1536,7 +1536,7 @@ team state lists); nothing in it survives the summary.
   (DESIGN_EXPLORATION), is skipped entirely (AWAITING_HUMAN), or
   proceeds through the normal §A build path (BUILD). Never
   dispatch the §A flow against a ticket carrying the
-  `Choose Design` label — that ticket is waiting on a human and
+  `choose-design` label — that ticket is waiting on a human and
   must be left untouched.
 - **State change is the FIRST mutation, before any comment.** The
   moment §C.3-route decides BUILD or DESIGN_EXPLORATION, run §C.3-state
@@ -1555,10 +1555,10 @@ team state lists); nothing in it survives the summary.
   hydration. State now precedes every comment.
 - **Phase labels mirror the workflow.** During a single
   `/supabuild linear` run, a ticket on the BUILD path moves
-  through: state → `In Progress` (§C.3-state) → `Building` (§C.3b) →
-  `Testing` (§C.3d.5) → (cleared at PR open, state = `In Review`,
+  through: state → `In Progress` (§C.3-state) → `building` (§C.3b) →
+  `testing` (§C.3d.5) → (cleared at PR open, state = `In Review`,
   §C.3e). On the DESIGN_EXPLORATION path: state → `In Progress`
-  (§C.3-state) → `Designing` (§C.3-design step 1) → `Choose Design` +
+  (§C.3-state) → `designing` (§C.3-design step 1) → `choose-design` +
   `design-explored` (§C.3-design step 4, state back to `Todo`).
   Most label transitions are best-effort, but **`design-explored`
   MUST stick** — it's the structural signal §C.3-route uses to
@@ -1629,7 +1629,7 @@ team state lists); nothing in it survives the summary.
   closing summary**: for the ticket you just dispatched, can you
   paste the Linear comment URL from §C.3e (`linear.app/.../comment-...`)
   AND confirm the ticket's state is `In Review` (or `Todo` for
-  failures), AND confirm phase labels (`Building`, `Testing`) are
+  failures), AND confirm phase labels (`building`, `testing`) are
   cleared? If you can't answer "yes" to all three with concrete
   evidence in your conversation history, you skipped §C.3d.5/§C.3e —
   STOP and run them now. The §C.3c post-dispatch checklist and the
