@@ -239,9 +239,10 @@ supabuild persists lightweight config via `git config` in the repo. Most keys ar
 
 | Key | What it stores | Set by |
 |---|---|---|
-| `supabuild.linearTeamId` | Linear team ID for ticket queries | Auto-detected on first `linear` run |
-| `supabuild.githubProjectNumber` | GitHub Projects v2 project number | Auto-created on first `github` run |
-| `supabuild.steps` | Comma-separated phase CSV for custom build order | Optional manual override |
+| `supabuild.githubProject` | GitHub Projects v2 project number | Auto-created on first `github` run |
+| `supabuild.buildSteps` | Cached gate selection for direct `/supabuild build` runs | First run, or `--configure` to re-prompt |
+| `supabuild.githubSteps` | Cached gate selection for `/supabuild github` runs | First run, or `--configure` to re-prompt |
+| `supabuild.linearSteps` | Cached gate selection for `/supabuild linear` runs | First run, or `--configure` to re-prompt |
 
 You can inspect or override any key with `git config supabuild.<key>`. No config file, no `.env` to create. The only setup that requires action is `gh auth login` and `linear auth login` if you're using those modes — and supabuild will tell you when you need to run them.
 
@@ -251,10 +252,10 @@ To check what supabuild has stored in the current repo:
 git config --get-regexp supabuild
 ```
 
-To clear a key (e.g. reset the project number to force supabuild to re-detect it):
+To clear a key (e.g. force supabuild to re-detect the GitHub project on next run):
 
 ```bash
-git config --unset supabuild.githubProjectNumber
+git config --unset supabuild.githubProject
 ```
 
 ---
