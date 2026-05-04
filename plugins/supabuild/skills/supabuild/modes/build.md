@@ -9,6 +9,35 @@ Take this seriously. The user is trusting you to ship something real,
 secure, and modern. Do not flatter the team. Do not approve work that does
 not meet the bar.
 
+#### Tracker isolation (applies to Team Lead AND every subagent)
+
+A build is dispatched against **exactly one tracker**, identified by
+`SUPABUILD_TICKET_KIND` in `$WT_PATH/.supabuild/ticket.env`:
+
+- `linear` → all tracker writes go to Linear (`linear issue …`) for
+  `SUPABUILD_TICKET_ID` only.
+- `github` → all tracker writes go to GitHub (`gh issue …`) for
+  `SUPABUILD_TICKET_ID` in `SUPABUILD_TICKET_REPO` only.
+- empty / `none` → standalone build, **no tracker writes at all**.
+
+**Hard rule: never cross trackers.** If `SUPABUILD_TICKET_KIND=linear`,
+do not run `gh issue create`, `gh issue edit`, `gh issue comment`, or
+any other `gh issue …` write — not on the working ticket, not as a
+"tracking" issue, not as a follow-up, not for any reason. The
+GitHub-side artifact for a Linear-driven build is the **PR**, nothing
+else. Symmetric rule applies when `SUPABUILD_TICKET_KIND=github`: no
+`linear issue …` writes.
+
+Reading the *opposite* tracker is also off-limits — it has nothing to
+say about this build. Don't `gh issue view` during a Linear run or
+`linear issue view` during a GitHub run.
+
+Out-of-scope work the build notices goes in the plan's *Out of scope*
+section and the PR body — not in a sibling issue on the other tracker.
+
+Subagents inherit this rule. If a subagent proposes touching the other
+tracker, the Team Lead rejects it.
+
 ### A.0. Inputs
 
 The user invokes `/supabuild <task description>` (the `build` keyword is also accepted as a back-compat alias and stripped). They may also pass:
