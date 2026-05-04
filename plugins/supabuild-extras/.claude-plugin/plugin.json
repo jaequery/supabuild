@@ -1,0 +1,17 @@
+{
+  "name": "supabuild-extras",
+  "version": "0.1.0",
+  "description": "Extended specialist roster for /supabuild — marketing, sales, paid-media, game-dev, spatial-computing, support, project-management, and strategy agents that the core build/design/linear/github flows don't reach for. Install only if you want these specialists available in the Team Lead's roster.",
+  "author": {
+    "name": "Jae Lee",
+    "url": "https://github.com/jaequery"
+  },
+  "homepage": "https://github.com/jaequery/supabuild",
+  "repository": "https://github.com/jaequery/supabuild",
+  "license": "MIT",
+  "keywords": [
+    "supabuild",
+    "supabuild-extras",
+    "specialist-agents"
+  ]
+}
