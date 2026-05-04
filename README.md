@@ -99,6 +99,54 @@ state: In Progress → In Review
 
 If you want the full picture, read [`plugins/supabuild/skills/supabuild/SKILL.md`](plugins/supabuild/skills/supabuild/SKILL.md). It's the source of truth — the slash command is a thin wrapper.
 
+## Token-saving usage
+
+Five rules of thumb that cut the bill 40–60% with no loss of safety
+on the workloads that actually need a Team Lead. Apply the ones that
+match your shape:
+
+1. **Pre-bake an exhaustive brief.** When the prompt has acceptance
+   criteria, target branch, and constraints up front, §A.0.5 skips
+   the discovery question batch entirely. Shape:
+   ```
+   /supabuild add OAuth login button. ACs: 1) button on /login renders 2) clicking opens Google consent 3) successful auth lands on /dashboard. Out of scope: GitHub provider. Constraints: reuse existing useAuth hook. --branch develop
+   ```
+
+2. **Cache `--steps` per task type** (auto-persisted to
+   `git config supabuild.buildSteps`):
+   - Backend / API / migration → `--steps "review,qa,security"`
+   - Pure refactor → `--steps "review,qa"`
+   - UI tweak → `--steps "review,qa,walkthrough"`
+   - Throwaway spike → `--steps ""` (Team Lead integration check only)
+
+3. **Exit `/supabuild` for tiny edits.** A 3-line typo fix doesn't
+   need 2–10 specialists, a security pass, and a walkthrough. Use a
+   plain Claude turn or a direct edit. Reach for `/supabuild` when
+   the change spans ≥2 files or carries real risk.
+
+4. **Cap design variants at 2–3.** State the axes you care about
+   ("minimal vs expressive") so the variants are maximally
+   informative rather than just numerous:
+   ```
+   /supabuild design redesign empty state. Generate exactly 2: one minimal, one expressive.
+   ```
+
+5. **Pre-curate Linear / GitHub backlogs.** Burndown cost scales
+   linearly with ticket count × enabled gates. Trim noise tickets
+   from the `Todo` column before kicking off, and pass per-batch
+   gates the same way:
+   ```
+   /supabuild linear --steps "review,qa"
+   ```
+
+The plugin itself is also tuned for low-token operation: agents are
+tiered (Haiku for mechanical roles, Sonnet for implementers, Opus
+only for orchestration); subagent prompts use a stable cache-friendly
+prefix (§A.3.1); round 2+ remediations dispatch a single Remediator
+with a delta prompt (§A.3.2); and `build.md` lazy-loads the
+walkthrough capture (§A.5a) and ship sequence (§A.6) only when those
+phases actually fire.
+
 ## Caveats
 
 - Runs in your Claude Code session. No daemon, no cloud. Close the session and the run stops.
