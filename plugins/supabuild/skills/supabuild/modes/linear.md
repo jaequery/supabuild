@@ -277,6 +277,23 @@ JSON, keep only nodes whose `state.name` matches `Todo`
 all `unstarted` results for that team and note the substitution in
 the printed table.
 
+**Sub-tickets are NOT enqueued at the top level.** Filter out any
+issue whose `parent` field is non-null — sub-issues are processed
+*inside* their parent's slot, in the parent's `children` order, so
+that dependency chains authored by the human (parent first, then
+sub-tasks in order) are respected. The top-level queue is roots only.
+
+```bash
+# After fetching + Todo-filtering, drop any ticket that has a parent.
+# `linear issue query` returns `.parent.id` as null/absent for roots.
+QUEUE_JSON=$(echo "$QUEUE_JSON" | jq '[.[] | select(.parent == null or .parent.id == null)]')
+```
+
+If a root ticket's children are themselves not in `Todo`, they are
+skipped during expansion (§C.3-children) — only `Todo`-state children
+are processed. The queue table prints roots only; child counts appear
+inline on each row, e.g. `ENG-123  [P1]  "Add OAuth login"  (alice@…)  +3 sub-tickets`.
+
 If a returned issue is missing `description`, `attachments`, or
 `labels`, hydrate it with `linear issue view <ID> --json`.
 
@@ -1380,8 +1397,65 @@ it in the results table. Never let the ticket land in a
 
 - Environmental failure (auth, network, missing tooling) → STOP the
   loop; same failure will hit every later ticket.
-- Code-specific failure or 3-round cap → log and move on.
-- APPROVED → move on.
+- Code-specific failure or 3-round cap → log and move on (skip
+  §C.3-children for this root — its sub-tickets often depend on the
+  parent landing first; surface them as deferred in §C.5).
+- APPROVED → run §C.3-children, then move on to the next root.
+
+#### C.3-children. Process sub-tickets of the just-finished root
+
+After a root ticket finishes (§C.3f), expand its sub-tickets and run
+them through the same per-ticket sub-routine (§C.3-route → §C.3f),
+**in the order Linear returns them**. Linear's `children` connection
+is sorted by `sortOrder` ascending, which matches the manual order
+the human arranged in the parent's sub-issue list — that ordering is
+the human's stated dependency chain and must be preserved.
+
+1. **Fetch children.** Read from the cached parent issue JSON if
+   `children.nodes` is present; otherwise:
+   ```bash
+   linear api '
+     query($id:String!){ issue(id:$id){ children(first:50){
+       nodes{ id identifier title state{ name type } parent{ id } }
+     } } }
+   ' --variables "$(jq -nc --arg id "$IDENT" '{id:$id}')" \
+     > "$LTB_CACHE_DIR/children-$IDENT.json"
+   ```
+2. **Filter to Todo-state children only.** Non-Todo children
+   (already In Progress, Done, Cancelled, Backlog, etc.) are skipped
+   — Todo is the only state §C is contracted to act on. Print each
+   skip with its current state so the operator sees why.
+3. **Recurse.** For each kept child, run the full per-ticket
+   sub-routine (§C.3-route → §C.3-state → … → §C.3f) against the
+   child. Each child still gets its own PR, its own worktree, its
+   own Linear comment trail. A child that itself has grandchildren
+   triggers §C.3-children recursively after it finishes — depth is
+   bounded by the human-authored tree, no artificial cap.
+4. **`--limit` accounting.** Children consume slots from the same
+   `--limit` budget as roots. If the budget hits zero mid-expansion,
+   stop expanding and surface the deferred children in §C.5; do not
+   silently exceed the limit.
+5. **Failure of a child is non-fatal to siblings.** If a child
+   ESCALATES or FAILS, log it, move state per §C.3e (`Todo`), and
+   continue with the next sibling. The parent has already shipped;
+   later siblings may or may not depend on the failing one — that's
+   the human's call to triage.
+6. **Print the expansion** before recursing, so the operator sees the
+   tree being walked:
+   ```
+   ENG-123 → 3 Todo sub-tickets queued: ENG-124, ENG-125, ENG-127
+                                         (ENG-126 skipped: state=Done)
+   ```
+
+The §C.5 results table shows children indented under their root for
+readability:
+
+```
+| Ticket      | Verdict   | PR / Next step                  | … |
+| ENG-123     | APPROVED  | …/pull/45                       | … |
+| └ ENG-124   | APPROVED  | …/pull/46                       | … |
+| └ ENG-125   | ESCALATED | (no PR — see worktree)          | … |
+```
 
 ### C.4. Parallel mode
 
