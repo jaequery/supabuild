@@ -35,10 +35,26 @@ Optional flags:
 - `--assignee <me|email|userId>` — filter to one assignee. Default: any.
 - `--limit <n>` — cap how many tickets to process this run. Default: 10.
 - `--target <branch>` — base branch for PRs. Default: `main`.
-- `--parallel <n>` — process N tickets concurrently. **Default: 1
-  (sequential).** Pass an explicit number to parallelize. Warn if
-  effective concurrency exceeds 5 (shared `gh`/Linear rate limits)
-  but do not cap.
+- `--parallel <n>` — process N tickets concurrently **in this same
+  Claude session**. **Default: 1 (sequential).** Pass an explicit
+  number to parallelize. Warn if effective concurrency exceeds 5
+  (shared `gh`/Linear rate limits) but do not cap. Mutually
+  exclusive with `--tabs`.
+- `--tabs` — for each ticket in the queue, spawn a **new terminal
+  tab/window running its own headless `claude -p` session** that
+  processes exactly one ticket via `--only-ticket`. The parent
+  session does the queue fetch + spawn loop and exits; each child
+  owns its own context, its own worktree, its own Linear narration.
+  Auto-detects the terminal (cmux → iTerm2 → Terminal.app → tmux →
+  background fallback). See §C.4-tabs. Override detection with
+  `SUPABUILD_SPAWN_TARGET=cmux|iterm2|terminal|tmux|background`.
+  Warn if queue size > 5 (you'll get N concurrent Claude API
+  sessions — N× spend, possible 429s, possible merge conflicts on
+  overlapping tickets) but do not cap.
+- `--only-ticket <IDENT>` — internal flag used by `--tabs` children.
+  Skip §C.2 queue fetch and process exactly the named ticket
+  (`ENG-123`), then exit. Assumes preflight (CLIs, auth) is already
+  satisfied — the parent verified before spawning.
 - `--steps <csv>` — explicit comma-separated set of verification gates
   (`review`, `qa`, `security`, `polish`, `walkthrough`). Bypasses the
   §C.0.6 checkbox prompt and passes through to §A as
@@ -257,6 +273,15 @@ interaction; surface a consolidated walkthrough for the rest.
    - Cache directory is removed at the end of §C.5.
 
 ### C.2. Fetch the Todo queue
+
+**`--only-ticket <IDENT>` short-circuit.** When invoked with
+`--only-ticket`, skip the queue fetch entirely. Fetch just the named
+ticket via `linear issue view "$IDENT" --json`, persist it to
+`$LTB_CACHE_DIR/issue-$IDENT.json`, and treat it as a single-row queue.
+Also: hard-disable both `--tabs` and `--parallel` for this invocation
+(a child session must never re-spawn) and skip the §C.0.6 prompt
+(the parent already passed `--steps`). Then jump to §C.3.
+
 
 Linear's "Todo" is a `WorkflowState` of type `unstarted` named `Todo`
 (case-insensitive). Use the CLI's structured query, then post-filter
@@ -1457,14 +1482,95 @@ readability:
 | └ ENG-125   | ESCALATED | (no PR — see worktree)          | … |
 ```
 
-### C.4. Parallel mode
+### C.4. Parallel mode (in-process)
 
 Default: **sequential** (`--parallel 1`). Tickets run one at a time so
 output stays readable and rate limits don't bite. Pass `--parallel
-<n>` to opt into concurrency — each §A run produces its own worktree
-(`supabuild/...`), so they don't collide on disk. If effective
+<n>` to opt into in-process concurrency — each §A run produces its own
+worktree (`supabuild/...`), so they don't collide on disk. If effective
 concurrency exceeds 5, warn the user about shared `gh`/Linear rate
 limits but do not cap — the user asked for it.
+
+`--parallel` and `--tabs` are mutually exclusive. If both are passed,
+abort with an error: pick one. They target different tradeoffs —
+`--parallel` shares this Claude session's context (cheaper, narrower
+parallelism, single observable output stream); `--tabs` spawns
+isolated child sessions (true parallelism, N× API spend, separate
+contexts, separate observable streams).
+
+### C.4-tabs. Tab-spawn mode (`--tabs`)
+
+When `--tabs` is set, the parent session does **not** dispatch §A
+inline. It does the queue fetch (§C.2), the route decision per ticket
+(§C.3-route), then for each ticket whose route is BUILD or
+DESIGN_EXPLORATION it shells out to:
+
+```bash
+"$SKILL_BASE/../../scripts/spawn-tab.sh" \
+  "$REPO_ROOT" \
+  "claude --dangerously-skip-permissions -p '/supabuild linear --only-ticket $IDENT --steps $STEPS_CSV --target $TARGET'"
+```
+
+Where `$SKILL_BASE` is the loaded skill's base directory (the path
+printed at the top of the skill invocation). The script auto-detects
+cmux / iTerm2 / Terminal.app / tmux / background-fallback and prints
+one `spawn-tab: target=… ref=… log=…` line per spawn. Capture and
+echo each line so the user sees where every ticket landed.
+
+Rules:
+
+1. **Preflight runs in the parent only.** §C.1 (CLIs + auth) is the
+   parent's job — we don't want N child tabs each prompting the
+   user to `linear auth login`. After preflight passes, the parent
+   spawns children and exits.
+2. **Each child is `--only-ticket`.** A child invocation with
+   `--only-ticket <IDENT>` skips §C.2 queue fetch entirely, fetches
+   just that one ticket via `linear issue view $IDENT --json`,
+   writes its own `$LTB_CACHE_DIR/issue-$IDENT.json`, and runs the
+   §C.3-route → §C.3f sub-routine for exactly that ticket. It does
+   not touch siblings, does not write the §C.5 summary table —
+   instead it prints a one-line per-ticket result that the parent
+   does not consume (the parent has already exited).
+3. **Steps CSV pass-through.** The parent resolves `$STEPS_CSV` per
+   §C.0.6 once, then passes `--steps $STEPS_CSV` to every child so
+   none of them re-prompt. Empty CSV passes through as `--steps ""`.
+4. **Routing happens twice — and that's fine.** The parent runs
+   §C.3-route to decide whether to spawn at all (AWAITING_HUMAN
+   tickets are NOT spawned — record verdict in the parent's mini
+   summary and skip). The child then re-runs §C.3-route as the
+   first step of its own §C.3 loop. The double-check is cheap
+   (single label/keyword scan) and keeps each child self-contained.
+5. **No per-ticket comment from the parent.** The "picked up"
+   comment (§C.3-announce) and every other Linear narration is the
+   child's responsibility — the parent must not post on the
+   ticket. The parent's only responsibility is queue ordering +
+   spawning.
+6. **Warning at queue > 5.** Before spawning, if the BUILD-route
+   queue length > 5, print a single warning line:
+   `tabs: about to spawn N concurrent Claude sessions — N× API
+   spend, possible 429s, possible merge conflicts on overlapping
+   tickets. Ctrl-C in the next 5s to abort.` Then sleep 5 and
+   proceed. Do not cap.
+7. **Parent's mini summary on exit.** Replace §C.5 with a compact
+   "spawned" table:
+   ```
+   ## /supabuild linear --tabs — spawned
+   Target: cmux  (auto-detected; override via SUPABUILD_SPAWN_TARGET)
+
+   | Ticket  | Route                | Spawn target | Ref          |
+   |---------|----------------------|--------------|--------------|
+   | ENG-123 | BUILD                | cmux         | workspace:7  |
+   | ENG-130 | DESIGN_EXPLORATION   | cmux         | workspace:8  |
+   | ENG-142 | AWAITING_HUMAN       | (skipped)    | —            |
+   ```
+   Each child writes its own per-ticket Linear narration; watch
+   Linear (or the spawned tabs) for progress. The parent does NOT
+   wait for children to finish.
+8. **Sub-tickets stay with their parent.** §C.3-children expansion
+   only happens *inside* a child session — when child A finishes
+   ENG-123 and that root has Todo sub-tickets, A processes them
+   sequentially in its own session before exiting. The top-level
+   tab spawner does not flatten the tree.
 
 ### C.5. Final summary
 
@@ -1646,6 +1752,15 @@ team state lists); nothing in it survives the summary.
   `-H "Content-Type: $CT"` as the FIRST header arg in §C.3d.5.
 - **No branch/PR reuse.** Branch name and PR number must be unique
   across the run.
+- **`--tabs` and `--parallel` are mutually exclusive.** Both attempt
+  concurrency but along different axes (in-process vs. separate
+  Claude sessions). Combining them double-books work and corrupts
+  the parent's state tracking. If both are passed, abort.
+- **`--only-ticket` is a child-session contract.** A child must
+  never re-spawn (no `--tabs`, no `--parallel`), must not write
+  the §C.5 summary table (it owns one ticket only), and must not
+  re-run §C.1 install steps (the parent already verified). It
+  inherits `--steps` from the parent verbatim — never re-prompt.
 - **Clean-code bar is part of the contract.** The §C.3a clause is
   embedded in every build prompt and must be enforced by the
   Team Lead's §A.6 code-review gate. Re-roll if violated.

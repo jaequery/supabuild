@@ -54,10 +54,25 @@ Optional flags:
 - `--assignee <login>` — filter to one assignee. Default: any.
 - `--limit <n>` — cap how many issues to process this run. Default: 10.
 - `--target <branch>` — base branch for PRs. Default: `main`.
-- `--parallel <n>` — process N issues concurrently. **Default: 1
-  (sequential).** Pass an explicit number to parallelize. Warn if
-  effective concurrency exceeds 5 (shared `gh` rate limits) but do
-  not cap.
+- `--parallel <n>` — process N issues concurrently **in this same
+  Claude session**. **Default: 1 (sequential).** Pass an explicit
+  number to parallelize. Warn if effective concurrency exceeds 5
+  (shared `gh` rate limits) but do not cap. Mutually exclusive
+  with `--tabs`.
+- `--tabs` — for each issue in the queue, spawn a **new terminal
+  tab/window running its own headless `claude -p` session** that
+  processes exactly one issue via `--only-issue`. The parent does
+  the queue fetch + spawn loop and exits; each child owns its own
+  context, worktree, and GitHub narration. Auto-detects the
+  terminal (cmux → iTerm2 → Terminal.app → tmux → background
+  fallback). Override with
+  `SUPABUILD_SPAWN_TARGET=cmux|iterm2|terminal|tmux|background`.
+  Warn if queue size > 5 (N concurrent Claude sessions = N× spend,
+  possible 429s, possible merge conflicts on overlapping issues)
+  but do not cap. See §E.4-tabs (mirrors §C.4-tabs in linear.md).
+- `--only-issue <number>` — internal flag used by `--tabs` children.
+  Skip §E.2 queue fetch and process exactly the named issue
+  (`123`), then exit. Assumes preflight passed in the parent.
 - `--steps <csv>` — explicit comma-separated set of gates to run, drawn
   from `review`, `qa`, `security`, `polish`, `walkthrough`. Bypasses
   the §E.0.6 checkbox prompt. Empty value (`--steps ""`) disables every
@@ -414,6 +429,14 @@ to the cached selection so steady-state usage is one keystroke
 
 ### E.2. Fetch the Todo queue
 
+**`--only-issue <N>` short-circuit.** When invoked with `--only-issue`,
+skip the queue fetch entirely. Fetch just the named issue via `gh
+issue view "$N" --repo "$REPO" --json …`, persist to the cache, and
+treat as a single-row queue. Hard-disable `--tabs` and `--parallel`
+for this invocation (a child must never re-spawn) and skip the
+§E.0.6 prompt (the parent passed `--steps`). Then jump to §E.3.
+
+
 ```bash
 gh project item-list "$PROJECT_NUM" --owner "$OWNER" --format json --limit 200
 ```
@@ -720,6 +743,35 @@ inspection. Re-run /supabuild github to retry, or finish by hand.
 EOF
 )
 ```
+
+### E.4-tabs. Tab-spawn mode (`--tabs`)
+
+When `--tabs` is set, the parent does **not** dispatch §A inline.
+After §E.1 preflight + §E.2 queue fetch, route each issue (§E.3-route
+equivalent — UI-design vs build vs awaiting-human), then for each
+spawnable issue shell out to:
+
+```bash
+"$SKILL_BASE/../../scripts/spawn-tab.sh" \
+  "$REPO_ROOT" \
+  "claude --dangerously-skip-permissions -p '/supabuild github --only-issue $NUMBER --steps $STEPS_CSV --target $TARGET'"
+```
+
+Same contract as §C.4-tabs in linear.md (which is canonical):
+
+1. Preflight (`gh auth`, project setup) runs in the parent only.
+2. Each child is `--only-issue <N>` — fetches just that issue,
+   skips §E.2 queue fetch, runs §E.3 once, exits.
+3. `--steps $STEPS_CSV` passes through verbatim so children never
+   re-prompt.
+4. AWAITING_HUMAN issues are not spawned — listed as skipped in
+   the parent's mini summary.
+5. The parent posts no GitHub comments on issues — narration is
+   the child's job.
+6. Queue > 5 → 5-second warning, then proceed. No cap.
+7. Parent exits after spawning; the §E.5 summary is replaced by a
+   compact "spawned" table identical in shape to §C.4-tabs.
+8. `--tabs` and `--parallel` are mutually exclusive — abort if both.
 
 ### E.4. Run-level cleanup
 
